@@ -2191,6 +2191,8 @@ const struct penable chipset_enables[] = {
 	{0},
 };
 
+/* c621a */
+
 int chipset_flash_enable(const struct programmer_cfg *cfg)
 {
 	struct pci_dev *dev = NULL;
