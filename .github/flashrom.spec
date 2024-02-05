@@ -1,6 +1,6 @@
 Name:		flashrom
-#Update this version string and create a matching v%{version} tag to cut a release 
-Version:	1.3.99
+#Update this version string and create a matching v%{version} tag to cut a release
+Version:	1.3.100
 Release:	0%{?dist}
 Summary:	Simple program for reading/writing flash chips content
 License:	GPLv2
