@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Update Packages
@@ -18,7 +18,7 @@ jobs:
       - name: Run Make
         run: make CONFIG_INTERNAL=yes
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: flashrom-binary
           path: flashrom
