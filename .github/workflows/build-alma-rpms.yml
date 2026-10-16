@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: almalinux:9-minimal
+    container: almalinux:10-minimal
     name: Build Alma RPMs
     steps:
       - name: Install tools needed for actions
