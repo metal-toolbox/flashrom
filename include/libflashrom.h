@@ -1,19 +1,11 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2010 Google Inc.
- * Copyright (C) 2012 secunet Security Networks AG
- * (Written by Nico Huber <nico.huber@secunet.com> for secunet)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2010 Google Inc.
+ * SPDX-FileCopyrightText: 2012 secunet Security Networks AG (Written by Nico Huber <nico.huber@secunet.com> for secunet)
+ * SPDX-FileCopyrightText: 2025 Dmitry Zhadinets <dzhadinets@gmail.com>
+ * SPDX-FileCopyrightText: 2025 Google LLC
  */
 
 #ifndef __LIBFLASHROM_H__
@@ -48,6 +40,19 @@ int flashrom_init(int perform_selfcheck);
  * @return 0 on success
  */
 int flashrom_shutdown(void);
+
+struct flashrom_flashctx;
+
+/**
+ * @brief Create flash context.
+ *
+ * @param[out] flashctx Points to a pointer of type struct flashrom_flashctx
+ *                      that will be initialised to be used for further operations. *flashctx
+ *                      has to be freed by the caller with @ref flashrom_flash_release.*
+ * @return 0 on success
+ */
+int flashrom_create_context(struct flashrom_flashctx **const flashctx);
+
 enum flashrom_log_level {
 	FLASHROM_MSG_ERROR	= 0,
 	FLASHROM_MSG_WARN	= 1,
@@ -57,6 +62,20 @@ enum flashrom_log_level {
 	FLASHROM_MSG_SPEW	= 5,
 };
 typedef int(flashrom_log_callback)(enum flashrom_log_level, const char *format, va_list);
+
+/**
+ * @brief Set the log level.
+ *
+ * Set a log level for messages from libflashrom.
+ * The print callback will be invoked only for messages
+ * with a log level less than or equal to the configured value.
+ * The default log level is FLASHROM_MSG_INFO.
+ *
+ * @param level The log level to be set.
+ */
+
+ void flashrom_set_log_level(enum flashrom_log_level level);
+
 /**
  * @brief Set the log callback function.
  *
@@ -69,20 +88,54 @@ typedef int(flashrom_log_callback)(enum flashrom_log_level, const char *format, 
  */
 void flashrom_set_log_callback(flashrom_log_callback *log_callback);
 
+typedef void (flashrom_log_callback_v2)(
+	enum flashrom_log_level,
+	const char* message,
+	void* user_data);
+/**
+ * @brief Set the log callback function.
+ *
+ * Set a callback function which will be invoked whenever libflashrom wants
+ * to output messages. This allows frontends to do whatever they see fit with
+ * such messages, e.g. write them to syslog, or to a file, or print them in a
+ * GUI window, etc.
+ * The message is formatted using vsnprintf
+ *
+ * @param log_callback Pointer to the new log callback function.
+ * @param user_data A pointer to data managed by the caller.
+ */
+void flashrom_set_log_callback_v2(flashrom_log_callback_v2 *log_callback, void* user_data);
+
 enum flashrom_progress_stage {
 	FLASHROM_PROGRESS_READ,
 	FLASHROM_PROGRESS_WRITE,
 	FLASHROM_PROGRESS_ERASE,
 	FLASHROM_PROGRESS_NR,
 };
+
 struct flashrom_progress {
 	enum flashrom_progress_stage stage;
 	size_t current;
 	size_t total;
 	void *user_data;
 };
-struct flashrom_flashctx;
+
 typedef void(flashrom_progress_callback)(struct flashrom_flashctx *flashctx);
+
+/**
+ * @deprecated Use flashrom_set_progress_callback_v2 instead
+ */
+void flashrom_set_progress_callback(
+  struct flashrom_flashctx *const flashctx,
+  flashrom_progress_callback *progress_callback,
+  struct flashrom_progress *progress_state)
+__attribute__((deprecated("Use flashrom_set_progress_callback_v2 instead")));
+
+typedef void(flashrom_progress_callback_v2)(enum flashrom_progress_stage stage,
+						size_t current,
+						size_t total,
+						void *user_data);
+
 /**
  * @brief Set the progress callback function.
  *
@@ -90,12 +143,12 @@ typedef void(flashrom_progress_callback)(struct flashrom_flashctx *flashctx);
  * to indicate the progress has changed. This allows frontends to do whatever
  * they see fit with such values, e.g. update a progress bar in a GUI tool.
  *
- * @param progress_callback Pointer to the new progress callback function.
- * @param progress_state Pointer to progress state to include with the progress
- * callback.
+ * @param flashrom_progress_callback_v2 Pointer to the new progress callback function.
+ * @param user_data A pointer to a piece of data which is managed by progress caller
  */
-void flashrom_set_progress_callback(struct flashrom_flashctx *const flashctx,
-		flashrom_progress_callback *progress_callback, struct flashrom_progress *progress_state);
+void flashrom_set_progress_callback_v2(struct flashrom_flashctx *const flashctx,
+					flashrom_progress_callback_v2 *progress_callback,
+					void* user_data);
 
 /** @} */ /* end flashrom-general */
 
@@ -144,6 +197,14 @@ struct flashrom_chipset_info {
  * @return flashrom version
  */
 const char *flashrom_version_info(void);
+/**
+ * @brief Returns list of supported programmers
+ * The last entry in the returned list is followed by a NULL.
+ *
+ * @return List of supported programmers, or NULL if an error occurred.
+ *  The pointer must be freed after using flashrom_data_free
+ */
+const char **flashrom_supported_programmers(void);
 /**
  * @brief Returns list of supported flash chips
  * @return List of supported flash chips, or NULL if an error occurred
@@ -204,6 +265,8 @@ int flashrom_programmer_shutdown(struct flashrom_programmer *flashprog);
  */
 
 /**
+ * @deprecated Use flashrom_flash_probe_v2 instead
+ *
  * @brief Probe for a flash chip.
  *
  * Probes for a flash chip and returns a flash context, that can be used
@@ -221,7 +284,47 @@ int flashrom_programmer_shutdown(struct flashrom_programmer *flashprog);
  *         2 if no chip was found,
  *         or 1 on any other error.
  */
-int flashrom_flash_probe(struct flashrom_flashctx **flashctx, const struct flashrom_programmer *flashprog, const char *chip_name);
+int flashrom_flash_probe(struct flashrom_flashctx **flashctx, const struct flashrom_programmer *flashprog, const char *chip_name)
+__attribute__((deprecated("Use flashrom_flash_probe_v2 instead")));
+
+/**
+ * @brief Probe for a flash chip, v2
+ *
+ * Probes for a flash chip and returns a flash context, that can be used
+ * later with flash chip and @ref flashrom-ops "image operations", if
+ * exactly one matching chip is found.
+ *
+ * Returns the list of names for all chips that matched, and the count of
+ * how many chips matched.
+ *
+ * Memory for the list of chips is dynamically allocated according to the
+ * number of chips found, and always needs to be freed with flashrom_data_free
+ * afterwards (including when no matches found or error happened).
+ *
+ * Note that if chip_name param is set, then probing happens only once, only
+ * for this one requested chip name. So the number of matches that can be
+ * returned in this case will be either 1 or 0 (and -1 for error).
+ *
+ * @param[out] flashctx Points to a struct flashrom_flashctx
+ *                      that will be set if exactly one chip is found. *flashctx
+ *                      has to be freed by the caller with @ref flashrom_flash_release.
+ * @param[out] all_matched_names pointer to an array containing the names of all chips
+ *				 that were successfully probed, terminated with a NULL pointer.
+ *				 If no chips are found, the returned array contains
+ *				 a single NULL element. Callers must free the array once unused
+ *				 by calling `flashrom_data_free`.
+ * @param[in] flashprog The flash programmer used to access the chip,
+ *			currently unused.
+ * @param[in] chip_name Name of a chip to probe for, or NULL to probe for
+ *                      all known chips.
+ * @return the number of matched chips (which can be 0) on success,
+ *         -1 if error happened during probing.
+ */
+int flashrom_flash_probe_v2(struct flashrom_flashctx *flashctx,
+				const char *** const all_matched_names,
+				const struct flashrom_programmer *flashprog,
+				const char *chip_name);
+
 /**
  * @brief Returns the size of the specified flash chip in bytes.
  *
@@ -237,6 +340,7 @@ size_t flashrom_flash_getsize(const struct flashrom_flashctx *flashctx);
  *
  * @param flashctx The context of the flash chip to erase.
  * @return 0 on success.
+ *         -3 if prepare_flash_access check failed and operation has not started
  */
 int flashrom_flash_erase(struct flashrom_flashctx *flashctx);
 /**
@@ -289,6 +393,7 @@ bool flashrom_flag_get(const struct flashrom_flashctx *flashctx, enum flashrom_f
  * @param buffer Target buffer to write image to.
  * @param buffer_len Size of target buffer in bytes.
  * @return 0 on success,
+ *         -3 if prepare_flash_access check failed and operation has not started
  *         2 if buffer_len is too small for the flash chip's contents,
  *         or 1 on any other failure.
  */
@@ -304,6 +409,7 @@ int flashrom_image_read(struct flashrom_flashctx *flashctx, void *buffer, size_t
  * @param buffer_len Size of source buffer in bytes.
  * @param refbuffer If given, assume flash chip contains same data as `refbuffer`.
  * @return 0 on success,
+ *         -3 if prepare_flash_access check failed and operation has not started
  *         4 if buffer_len doesn't match the size of the flash chip,
  *         3 if write was tried but nothing has changed,
  *         2 if write failed and flash contents changed,
@@ -320,6 +426,7 @@ int flashrom_image_write(struct flashrom_flashctx *flashctx, void *buffer, size_
  * @param buffer Source buffer to verify with.
  * @param buffer_len Size of source buffer in bytes.
  * @return 0 on success,
+ *         -3 if prepare_flash_access check failed and operation has not started
  *         3 if the chip's contents don't match,
  *         2 if buffer_len doesn't match the size of the flash chip,
  *         or 1 on any other failure.
@@ -449,6 +556,21 @@ int flashrom_layout_get_region_range(struct flashrom_layout *layout, const char 
  * @param layout Layout to free.
  */
 void flashrom_layout_release(struct flashrom_layout *layout);
+/**
+ * @brief Compare two flashrom layouts for equality.
+ *
+ * Compares all regions in both layouts. Two layouts are considered equal if they
+ * contain the same number of regions, in the same order, with identical start/end
+ * addresses and names.
+ *
+ * @param layout1 First layout to compare.
+ * @param layout2 Second layout to compare.
+ *
+ * @return 0 if layouts are identical,
+ *         1 if they differ or if either layout is NULL.
+ */
+int flashrom_layout_compare(const struct flashrom_layout *layout1,
+			    const struct flashrom_layout *layout2);
 /**
  * @brief Set the active layout for a flash context.
  *

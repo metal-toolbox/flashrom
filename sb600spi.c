@@ -1,31 +1,22 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2008 Wang Qingpei <Qingpei.Wang@amd.com>
- * Copyright (C) 2008 Joe Bao <Zheng.Bao@amd.com>
- * Copyright (C) 2008 Advanced Micro Devices, Inc.
- * Copyright (C) 2009, 2010, 2013 Carl-Daniel Hailfinger
- * Copyright (C) 2013 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2008 Wang Qingpei <Qingpei.Wang@amd.com>
+ * SPDX-FileCopyrightText: 2008 Joe Bao <Zheng.Bao@amd.com>
+ * SPDX-FileCopyrightText: 2008 Advanced Micro Devices, Inc.
+ * SPDX-FileCopyrightText: 2009, 2010, 2013 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2013 Stefan Tauner
  */
 
 #include <stdbool.h>
-#include <string.h>
+#include "platform/string.h"
 #include <stdlib.h>
-#include "flash.h"
 #include "programmer.h"
 #include "hwaccess_physmap.h"
 #include "spi.h"
-#include "platform/pci.h"
+#include "pcidev.h"
+#include "log.h"
 
 /* This struct is unused, but helps visualize the SB600 SPI BAR layout.
  *struct sb600_spi_controller {
@@ -576,6 +567,11 @@ static int promontory_read_memmapped(struct flashctx *flash, uint8_t *buf,
 		unsigned int start, unsigned int len)
 {
 	struct sb600spi_data * data = (struct sb600spi_data *)flash->mst->spi.data;
+
+	/* If the flash size is bigger than 16MiB, we can't read it from the top of 4G */
+	if (flash->chip->total_size > (16 * 1024))
+		return default_spi_read(flash, buf, start, len);
+
 	if (!data->flash) {
 		map_flash(flash);
 		data->flash = flash; /* keep a copy of flashctx for unmap() on tear-down. */
@@ -618,7 +614,7 @@ static const struct spi_master spi_master_yangtze = {
 };
 
 static const struct spi_master spi_master_promontory = {
-	.max_data_read	= MAX_DATA_READ_UNLIMITED,
+	.max_data_read	= FIFO_SIZE_YANGTZE - 3,
 	.max_data_write	= FIFO_SIZE_YANGTZE - 3,
 	.command	= spi100_spi_send_command,
 	.map_flash_region	= physmap,
@@ -637,6 +633,13 @@ int sb600_probe_spi(const struct programmer_cfg *cfg, struct pci_dev *dev)
 
 	/* Read SPI_BaseAddr */
 	tmp = pci_read_long(dev, 0xa0);
+	/* If the BAR register is 0xffffffff, ROM Armor is likely active. */
+	if (tmp == UINT32_MAX) {
+		msg_perr("SPI BAR register is invalid.\n"
+			 "ROM Armor is possibly active and prevents SPI access.\n");
+		return ERROR_FLASHROM_NONFATAL;
+	}
+
 	tmp &= 0xffffffe0;	/* remove bits 4-0 (reserved) */
 	msg_pdbg("SPI base address is at 0x%"PRIx32"\n", tmp);
 

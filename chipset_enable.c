@@ -1,39 +1,36 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2005-2009 coresystems GmbH
- * Copyright (C) 2006 Uwe Hermann <uwe@hermann-uwe.de>
- * Copyright (C) 2007,2008,2009 Carl-Daniel Hailfinger
- * Copyright (C) 2009 Kontron Modular Computers GmbH
- * Copyright (C) 2011, 2012 Stefan Tauner
- * Copyright (C) 2017 secunet Security Networks AG
- * (Written by Nico Huber <nico.huber@secunet.com> for secunet)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2005-2009 coresystems GmbH
+ * SPDX-FileCopyrightText: 2006 Uwe Hermann <uwe@hermann-uwe.de>
+ * SPDX-FileCopyrightText: 2007,2008,2009 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2009 Kontron Modular Computers GmbH
+ * SPDX-FileCopyrightText: 2011, 2012 Stefan Tauner
+ * SPDX-FileCopyrightText: 2017 secunet Security Networks AG (Written by Nico Huber <nico.huber@secunet.com> for secunet)
  */
 
 /*
  * Contains the chipset specific flash enables.
  */
 
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <inttypes.h>
-#include <errno.h>
+#include "platform/string.h"
 #include "flash.h"
 #include "programmer.h"
 #include "hwaccess_physmap.h"
-#include "platform/pci.h"
+#include "pcidev.h"
+#include "helpers.h"
+#include "log.h"
+#include <stdbool.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <inttypes.h>
+#include <errno.h>
+#if CONFIG_USE_LIBPCI_ECAM == 1
+#include <setjmp.h>
+#include <stdarg.h>
+#endif
 
 #define NOT_DONE_YET 1
 
@@ -606,7 +603,11 @@ static enum chipbustype enable_flash_ich_report_gcs(
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_ELKHART_LAKE:
 	case CHIPSET_APOLLO_LAKE:
 	case CHIPSET_GEMINI_LAKE:
@@ -713,8 +714,12 @@ static enum chipbustype enable_flash_ich_report_gcs(
 		break;
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_C740_SERIES_EMMITSBURG:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 		boot_straps = boot_straps_pch500;
 		break;
 	case CHIPSET_APOLLO_LAKE:
@@ -749,7 +754,11 @@ static enum chipbustype enable_flash_ich_report_gcs(
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_APOLLO_LAKE:
 	case CHIPSET_GEMINI_LAKE:
 	case CHIPSET_JASPER_LAKE:
@@ -916,6 +925,68 @@ static int enable_flash_pch100_shutdown(void *const pci_acc)
 	return 0;
 }
 
+#if CONFIG_USE_LIBPCI_ECAM == 1
+static jmp_buf ecam_init_escape;
+static char ecam_init_error[256];
+
+/* libpci's default error handler exits the process, escape instead. */
+static PCI_NONRET void ecam_init_failed(char *msg, ...)
+{
+	va_list args;
+
+	va_start(args, msg);
+	vsnprintf(ecam_init_error, sizeof(ecam_init_error), msg, args);
+	va_end(args);
+
+	longjmp(ecam_init_escape, 1);
+}
+
+/* On failure the accessor is cleaned up and must not be reused. */
+static bool try_init_ecam(struct pci_access *const pci_acc)
+{
+	void (*const default_error)(char *msg, ...) PCI_NONRET = pci_acc->error;
+
+	pci_acc->method = PCI_ACCESS_ECAM;
+	pci_acc->error = ecam_init_failed;
+
+	if (setjmp(ecam_init_escape)) {
+		msg_pdbg("libpci PCI_ACCESS_ECAM unavailable: %s\n", ecam_init_error);
+		pci_cleanup(pci_acc);
+		return false;
+	}
+
+	pci_init(pci_acc);
+	pci_acc->error = default_error;
+	msg_pdbg("Using libpci PCI_ACCESS_ECAM\n");
+	return true;
+}
+#endif
+
+static struct pci_access *pci_init_spi_access(void)
+{
+	struct pci_access *pci_acc = pci_alloc();
+	if (!pci_acc) {
+		msg_perr("Can't allocate PCI accessor.\n");
+		return NULL;
+	}
+
+#if CONFIG_USE_LIBPCI_ECAM == 1
+	if (try_init_ecam(pci_acc))
+		return pci_acc;
+
+	pci_acc = pci_alloc();
+	if (!pci_acc) {
+		msg_perr("Can't allocate PCI accessor.\n");
+		return NULL;
+	}
+#endif
+
+	pci_acc->method = PCI_ACCESS_I386_TYPE1;
+	msg_pdbg("Using libpci PCI_ACCESS_I386_TYPE1\n");
+	pci_init(pci_acc);
+	return pci_acc;
+}
+
 static int enable_flash_pch100_or_c620(const struct programmer_cfg *cfg,
 		struct pci_dev *const dev, const char *const name,
 		const int slot, const int func, const enum ich_chipset pch_generation)
@@ -929,14 +1000,11 @@ static int enable_flash_pch100_or_c620(const struct programmer_cfg *cfg,
 	 * this method globally since it would bring along other con-
 	 * straints (e.g. on PCI domains, extended PCIe config space).
 	 */
-	struct pci_access *const pci_acc = pci_alloc();
+	struct pci_access *const pci_acc = pci_init_spi_access();
 	struct pci_access *const saved_pacc = pacc;
-	if (!pci_acc) {
-		msg_perr("Can't allocate PCI accessor.\n");
+	if (!pci_acc)
 		return ret;
-	}
-	pci_acc->method = PCI_ACCESS_I386_TYPE1;
-	pci_init(pci_acc);
+
 	register_shutdown(enable_flash_pch100_shutdown, pci_acc);
 
 	struct pci_dev *const spi_dev = pci_get_dev(pci_acc, dev->domain, dev->bus, slot, func);
@@ -1014,9 +1082,29 @@ static int enable_flash_pch600(const struct programmer_cfg *cfg, struct pci_dev 
 	return enable_flash_pch100_or_c620(cfg, dev, name, 0x1f, 5, CHIPSET_600_SERIES_ALDER_POINT);
 }
 
+static int enable_flash_pch700(const struct programmer_cfg *cfg, struct pci_dev *const dev, const char *const name)
+{
+	return enable_flash_pch100_or_c620(cfg, dev, name, 0x1f, 5, CHIPSET_700_SERIES_RAPTOR_POINT);
+}
+
 static int enable_flash_mtl(const struct programmer_cfg *cfg, struct pci_dev *const dev, const char *const name)
 {
 	return enable_flash_pch100_or_c620(cfg, dev, name, 0x1f, 5, CHIPSET_METEOR_LAKE);
+}
+
+static int enable_flash_ptl(const struct programmer_cfg *cfg, struct pci_dev *const dev, const char *const name)
+{
+	return enable_flash_pch100_or_c620(cfg, dev, name, 0x1f, 5, CHIPSET_PANTHER_LAKE);
+}
+
+static int enable_flash_wcl(const struct programmer_cfg *cfg, struct pci_dev *const dev, const char *const name)
+{
+        return enable_flash_pch100_or_c620(cfg, dev, name, 0x1f, 5, CHIPSET_WILDCAT_LAKE);
+}
+
+static int enable_flash_nvl(const struct programmer_cfg *cfg, struct pci_dev *const dev, const char *const name)
+{
+	return enable_flash_pch100_or_c620(cfg, dev, name, 0x1f, 5, CHIPSET_NOVA_LAKE);
 }
 
 static int enable_flash_mcc(const struct programmer_cfg *cfg, struct pci_dev *const dev, const char *const name)
@@ -2084,6 +2172,8 @@ const struct penable chipset_enables[] = {
 	{0x8086, 0x9d84, B_S,    DEP, "Intel", "Cannon Lake U Premium",		enable_flash_pch300},
 	{0x8086, 0x0284, B_S,    DEP, "Intel", "Comet Lake U Premium",		enable_flash_pch400},
 	{0x8086, 0x0285, B_S,    DEP, "Intel", "Comet Lake U Base",		enable_flash_pch400},
+	{0x8086, 0xa0a4, B_S,    DEP, "Intel", "Tiger Lake LP",			enable_flash_pch500},
+	{0x8086, 0x43a4, B_S,    DEP, "Intel", "Tiger Lake H",			enable_flash_pch500},
 	{0x8086, 0xa082, B_S,    DEP, "Intel", "Tiger Lake U Premium",		enable_flash_pch500},
 	{0x8086, 0xa088, B_S,    DEP, "Intel", "Tiger Lake UP3",		enable_flash_pch500},
 	{0x8086, 0xa141, B_S,    NT,  "Intel", "Sunrise Point Desktop Sample",	enable_flash_pch100},
@@ -2091,9 +2181,9 @@ const struct penable chipset_enables[] = {
 	{0x8086, 0xa143, B_S,    DEP, "Intel", "H110",				enable_flash_pch100},
 	{0x8086, 0xa144, B_S,    NT,  "Intel", "H170",				enable_flash_pch100},
 	{0x8086, 0xa145, B_S,    NT,  "Intel", "Z170",				enable_flash_pch100},
-	{0x8086, 0xa146, B_S,    NT,  "Intel", "Q170",				enable_flash_pch100},
+	{0x8086, 0xa146, B_S,    DEP, "Intel", "Q170",				enable_flash_pch100},
 	{0x8086, 0xa147, B_S,    NT,  "Intel", "Q150",				enable_flash_pch100},
-	{0x8086, 0xa148, B_S,    NT,  "Intel", "B150",				enable_flash_pch100},
+	{0x8086, 0xa148, B_S,    DEP, "Intel", "B150",				enable_flash_pch100},
 	{0x8086, 0xa149, B_S,    NT,  "Intel", "C236",				enable_flash_pch100},
 	{0x8086, 0xa14a, B_S,    NT,  "Intel", "C232",				enable_flash_pch100},
 	{0x8086, 0xa14b, B_S,    NT,  "Intel", "Sunrise Point Server Sample",	enable_flash_pch100},
@@ -2182,10 +2272,25 @@ const struct penable chipset_enables[] = {
 	{0x8086, 0x7a83, B_S,    NT,  "Intel", "Q670",				enable_flash_pch600},
 	{0x8086, 0x7a84, B_S,    DEP, "Intel", "Z690",				enable_flash_pch600},
 	{0x8086, 0x7a88, B_S,    NT,  "Intel", "W680",				enable_flash_pch600},
-	{0x8086, 0x7a8a, B_S,    NT,  "Intel", "W685",				enable_flash_pch600},
 	{0x8086, 0x7a8d, B_S,    NT,  "Intel", "WM690",				enable_flash_pch600},
 	{0x8086, 0x7a8c, B_S,    NT,  "Intel", "HM670",				enable_flash_pch600},
+	{0x8086, 0x7a90, B_S,    NT,  "Intel", "R680E",				enable_flash_pch600},
+	{0x8086, 0x7a91, B_S,    NT,  "Intel", "Q670E",				enable_flash_pch600},
+	{0x8086, 0x7a92, B_S,    NT,  "Intel", "H610E",				enable_flash_pch600},
+	{0x8086, 0x7a8a, B_S,    NT,  "Intel", "W790",				enable_flash_pch700},
+	{0x8086, 0x7a04, B_S,    DEP, "Intel", "Z790",				enable_flash_pch700},
+	{0x8086, 0x7a05, B_S,    NT,  "Intel", "H770",				enable_flash_pch700},
+	{0x8086, 0x7a06, B_S,    NT,  "Intel", "B760",				enable_flash_pch700},
+	{0x8086, 0x7a0c, B_S,    NT,  "Intel", "HM770",				enable_flash_pch700},
+	{0x8086, 0x7a0d, B_S,    NT,  "Intel", "WM790",				enable_flash_pch700},
+	{0x8086, 0x7a14, B_S,    NT,  "Intel", "C262",				enable_flash_pch700},
+	{0x8086, 0x7a13, B_S,    NT,  "Intel", "C266",				enable_flash_pch700},
 	{0x8086, 0x7e23, B_S,    DEP, "Intel", "Meteor Lake-P/M",		enable_flash_mtl},
+	{0x8086, 0x7723, B_S,    DEP, "Intel", "Arrow Lake-H",			enable_flash_mtl},
+	{0x8086, 0xe323, B_S,    DEP, "Intel", "Panther Lake-U/H 12Xe",		enable_flash_ptl},
+	{0x8086, 0xe423, B_S,    DEP, "Intel", "Panther Lake-H 4Xe",		enable_flash_ptl},
+	{0x8086, 0x4d23, B_S,    DEP, "Intel", "Wildcat Lake",                  enable_flash_wcl},
+	{0x8086, 0xd323, B_S,    DEP, "Intel", "Nova Lake",			enable_flash_nvl},
 #endif
 	{0},
 };

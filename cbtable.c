@@ -1,32 +1,23 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2002 Steven James <pyro@linuxlabs.com>
- * Copyright (C) 2002 Linux Networx
- * (Written by Eric Biederman <ebiederman@lnxi.com> for Linux Networx)
- * Copyright (C) 2006-2009 coresystems GmbH
- * (Written by Stefan Reinauer <stepan@coresystems.de> for coresystems GmbH)
- * Copyright (C) 2010 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2002 Steven James <pyro@linuxlabs.com>
+ * SPDX-FileCopyrightText: 2002 Linux Networx (Written by Eric Biederman <ebiederman@lnxi.com> for Linux Networx)
+ * SPDX-FileCopyrightText: 2006-2009 coresystems GmbH (Written by Stefan Reinauer <stepan@coresystems.de> for coresystems GmbH)
+ * SPDX-FileCopyrightText: 2010 Carl-Daniel Hailfinger
  */
 
-#include <unistd.h>
-#include <stdio.h>
-#include <ctype.h>
-#include <strings.h>
-#include <string.h>
+#include "platform/string.h"
 #include "flash.h"
 #include "programmer.h"
 #include "coreboot_tables.h"
 #include "hwaccess_physmap.h"
+#include "log.h"
+#include <unistd.h>
+#include <stdio.h>
+#include <ctype.h>
+#include <strings.h>
 
 static char *cb_vendor = NULL, *cb_model = NULL;
 

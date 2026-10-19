@@ -1,16 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright 2021 Google LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2021 Google LLC
  */
 
 #include <stdlib.h>
@@ -126,6 +118,14 @@ int __wrap_libusb_get_config_descriptor(
 	return 0;
 }
 
+int __wrap_libusb_get_active_config_descriptor(libusb_device *dev, struct libusb_config_descriptor **config)
+{
+	LOG_ME;
+	if (get_io() && get_io()->libusb_get_config_descriptor)
+		return get_io()->libusb_get_config_descriptor(get_io()->state, dev, 0, config);
+	return 0;
+}
+
 void __wrap_libusb_free_config_descriptor(struct libusb_config_descriptor *config)
 {
 	LOG_ME;
@@ -160,6 +160,16 @@ int __wrap_libusb_control_transfer(libusb_device_handle *devh, uint8_t bmRequest
 	if (get_io() && get_io()->libusb_control_transfer)
 		return get_io()->libusb_control_transfer(get_io()->state,
 				devh, bmRequestType, bRequest, wValue, wIndex, data, wLength, timeout);
+	return 0;
+}
+
+int __wrap_libusb_bulk_transfer(libusb_device_handle *devh, unsigned char endpoint,
+		unsigned char *data, int length, int *actual_length, unsigned int timeout)
+{
+	LOG_ME;
+	if (get_io() && get_io()->libusb_bulk_transfer)
+		return get_io()->libusb_bulk_transfer(get_io()->state, devh, endpoint, data,
+				length, actual_length, timeout);
 	return 0;
 }
 

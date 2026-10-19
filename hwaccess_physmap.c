@@ -1,19 +1,11 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Peter Stuge <peter@stuge.se>
- * Copyright (C) 2009 coresystems GmbH
- * Copyright (C) 2010 Carl-Daniel Hailfinger
- * Copyright (C) 2010 Rudolf Marek <r.marek@assembler.cz>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2009 Peter Stuge <peter@stuge.se>
+ * SPDX-FileCopyrightText: 2009 coresystems GmbH
+ * SPDX-FileCopyrightText: 2010 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2010 Rudolf Marek <r.marek@assembler.cz>
  */
 
 #include <unistd.h>
@@ -21,11 +13,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include "platform/string.h"
 #include <errno.h>
 #include "flash.h"
-#include "platform.h"
+#include "platform/endian.h"
 #include "hwaccess_physmap.h"
+#include "log.h"
 
 #if !defined(__DJGPP__) && !defined(__LIBPAYLOAD__)
 /* No file access needed/possible to get mmap access permissions or access MSR. */

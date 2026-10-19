@@ -77,15 +77,11 @@ Maintainers List (try to look for most precise areas first)
 ################################################################################
 
 BUILD SYSTEM
-M:	Thomas Heijligen <src@posteo.de>
+M:	Peter Marheine <pmarheine@chromium.org>
 S:	Maintained
-F:	Makefile*
 F:	meson*
-F:	Makefile*/
 F:	*/meson*
-F:	*/Makefile*
 F:	util/ich_descriptors_tool/meson*
-F:	util/ich_descriptors_tool/Makefile*
 
 ERASE/WRITE ALGORITHM
 M:	Aarya Chaumal <aarya.chaumal@gmail.com>
@@ -94,11 +90,12 @@ F:	erasure_layout*
 F:	include/erasure_layout*
 
 FLASHCHIPS
+M:	Abdelkader Boudih <coreboot@seuros.com>
 M:	Anastasia Klimchuk <aklm@chromium.org>
-M:	Nikolai Artemiev <nartemiev@google.com>
 M:	Stefan Reinauer <stefan.reinauer@coreboot.org>
 S:	Maintained
 F:	flashchips*
+F:	flashchips/
 F:	include/flashchips*
 
 I2C HELPERS
@@ -106,8 +103,27 @@ M:	Peter Marheine <pmarheine@chromium.org>
 S:	Supported
 F:	i2c_helper_linux.c
 
+LOGIC
+M:	Anastasia Klimchuk <aklm@chromium.org>
+S:	Maintained
+F:	flashrom*
+F:	libflashrom*
+F:	include/flash.h
+F:	include/libflashrom.h
+
+READ EXTENDED
+M:	Abdelkader Boudih <coreboot@seuros.com>
+S:	Maintained
+F:	read_extended*
+F:	include/read_extended*
+
+REPLAY PROTECTED MONOTONIC COUNTER
+M:	Matti Finder <matti.finder@gmail.com>
+S:	Maintained
+F:	rpmc.c
+F:	include/rpmc.h
+
 WRITEPROTECT
-M:	Nikolai Artemiev <nartemiev@google.com>
 M:	Sergii Dmytruk <sergii.dmytruk@3mdeb.com>
 S:	Supported
 F:	writeprotect*
@@ -123,11 +139,11 @@ S:	Maintained
 F:	MAINTAINERS
 
 SPHINX DOCS
-M:	Thomas Heijligen <src@posteo.de>
 M:	Anastasia Klimchuk <aklm@chromium.org>
 S:	Maintained
 F:	doc/
 F:	README.rst
+F:	COPYING.rst
 
 ################################################################################
 # PROGRAMMERS
@@ -136,44 +152,55 @@ F:	README.rst
 AMD SB600SPI
 M:	Martin Roth <gaumless@tutanota.com>
 S:	Maintained
-F:	sb600spi.c
+F:	programmers/sb600spi.c
+
+BUS PIRATE
+M:	David Reguera <regueragarciadavid@gmail.com>
+S:	Maintained
+F:	programmers/buspirate_spi.c
 
 CH347
 M:	Nicholas Chin <nic.c3.14@gmail.com>
 S:	Maintained
-F:	ch347_spi.c
+F:	programmers/ch347_spi.c
 
 DirtyJTAG
 M:	Jean THOMAS <virgule@jeanthomas.me>
 S:	Maintained
-F:	dirtyjtag_spi.c
+F:	programmers/dirtyjtag_spi.c
+
+FAULT INJECTION PROGRAMMER
+M:	Abdelkader Boudih <coreboot@seuros.com>
+S:	Maintained
+F:	programmers/fault.c
 
 I2C PROGRAMMERS
 M:	Peter Marheine <pmarheine@chromium.org>
 S:	Supported
-F:	mediatek_i2c_spi.c
-F:	parade_lspcon.c
-F:	realtek_mst_i2c_spi.c
+F:	programmers/mediatek_i2c_spi.c
+F:	programmers/parade_lspcon.c
+F:	programmers/realtek_mst_i2c_spi.c
 
 LINUX MTD
-M:	Nikolai Artemiev <nartemiev@google.com>
-S:	Supported
-F:	linux_mtd.c
+M:	Abdelkader Boudih <coreboot@seuros.com>
+S:	Maintained
+F:	programmers/linux_mtd.c
 
 National Instruments USB-845x
 M:	Miklos Marton <martonmiklosqdev@gmail.com>
 S:	Maintained
-F:	ni845x_spi.c
+F:	programmers/ni845x_spi.c
 
-RAIDEN DEBUG SPI
-M:	Nikolai Artemiev <nartemiev@google.com>
+NVIDIA SMA SPI
+M:	Willie Thai <wthai@nvidia.com>
+M:	Gilbert Chen <gilbertc@nvidia.com>
 S:	Maintained
-F:	raiden_debug_spi.c
+F:	programmers/nv_sma_spi.c
 
 STLINK-V3
 M:	Miklos Marton <martonmiklosqdev@gmail.com>
 S:	Maintained
-F:	stlinkv3_spi.c
+F:	programmers/stlinkv3_spi.c
 
 ################################################################################
 # TESTS
@@ -194,11 +221,10 @@ M:	Alexander Goncharov <chat@joursoir.net>
 S:	Maintained
 F:	util/flashrom.bash-completion.tmpl
 
-FLASHROM TESTER
-M:	Hsuan Ting Chen <roccochen@google.com>
-R:	Evan Benn <evanbenn@gmail.com>
-S:	Supported
-F:	util/flashrom_tester/
+CONTINUOUS INTEGRATION SCRIPT
+M:	Anastasia Klimchuk <aklm@chromium.org>
+S:	Maintained
+F:	test_build.sh
 
 FLASHROM DOCKER
 M:	Stefan Reinauer <stefan.reinauer@coreboot.org>

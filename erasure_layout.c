@@ -1,28 +1,22 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2022 Aarya Chaumal
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2022 Aarya Chaumal
  */
 
+#include "erasure_layout.h"
+
+#include "flash.h"
+#include "layout.h"
+#include "helpers.h"
+#include "platform/string.h"
+#include "log.h"
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <limits.h>
-#include <string.h>
 
-#include "flash.h"
-#include "layout.h"
-#include "erasure_layout.h"
 
 static size_t calculate_block_count(const struct flashchip *chip, size_t eraser_idx)
 {
@@ -52,8 +46,8 @@ static void init_eraseblock(struct erase_layout *layout, size_t idx, size_t bloc
 
 	edata->first_sub_block_index = *sub_block_index;
 	struct eraseblock_data *subedata = &layout[idx - 1].layout_list[*sub_block_index];
-	while (subedata->start_addr >= start_addr && subedata->end_addr <= end_addr &&
-		*sub_block_index < layout[idx-1].block_count) {
+	while (*sub_block_index < layout[idx-1].block_count &&
+		subedata->start_addr >= start_addr && subedata->end_addr <= end_addr) {
 		(*sub_block_index)++;
 		subedata++;
 	}
@@ -151,7 +145,7 @@ int create_erase_layout(struct flashctx *const flashctx, struct erase_layout **e
  * @param	region_start	pointer to start address of the region to align
  * @param	region_end	pointer to end address of the region to align
  *
- * This function aligns start and end address of the region (in struct walk_info)
+ * This function aligns start and end address of the region
  * to some erase sector boundaries and modify the region start and end addresses
  * to match nearest erase sector boundaries. This function will be used in the
  * new algorithm for erase function selection.
@@ -187,6 +181,27 @@ static void align_region(const struct erase_layout *layout, struct flashctx *con
 				end_diff, *region_end, *region_end + end_diff);
 		*region_end = *region_end + end_diff;
 	}
+}
+
+/* Deselect all the blocks from index_to_deselect and down to the smallest. */
+static void deselect_erase_functions(const struct erase_layout *layout, size_t index_to_deselect,
+					int sub_block_start, const int sub_block_end)
+{
+	for (int j = sub_block_start; j <= sub_block_end; j++)
+		layout[index_to_deselect].layout_list[j].selected = false;
+
+	int block_start_to_deselect =
+		layout[index_to_deselect].layout_list[sub_block_start].first_sub_block_index;
+	int block_end_to_deselect =
+		layout[index_to_deselect].layout_list[sub_block_end].last_sub_block_index;
+
+	if (index_to_deselect)
+		deselect_erase_functions(layout,
+					index_to_deselect - 1,
+					block_start_to_deselect,
+					block_end_to_deselect);
+	else
+		return; // index_to_deselect has already reached 0, the smallest size of block. we are done.
 }
 
 /*
@@ -228,64 +243,34 @@ static void select_erase_functions(struct flashctx *flashctx, const struct erase
 		}
 
 		const int total_blocks = sub_block_end - sub_block_start + 1;
-		if (count && count > total_blocks/2) {
+		if (total_blocks - count <= total_blocks * flashctx->sacrifice_ratio / 100) {
+			/* Number of smaller blocks not needed to change is lower than the
+			 * sacrifice ratio, so we can sacrifice them.
+			 * We are selecting one large block to cover the area, so
+			 * send opcode once instead of sending many smaller ones.
+			 */
 			if (ll->start_addr >= rstart && ll->end_addr <= rend) {
-				for (int j = sub_block_start; j <= sub_block_end; j++)
-					layout[findex - 1].layout_list[j].selected = false;
+				/* Deselect all smaller blocks covering the same region. */
+				deselect_erase_functions(layout,
+							findex - 1,
+							sub_block_start,
+							sub_block_end);
+
+				/* Select large block. */
 				ll->selected = true;
 			}
 		}
 	}
 }
 
-/*
- * @brief	wrapper to use the erase algorithm
- *
- * @param	flashctx	flash context
- * @param	region_start	start address of the region
- * @param	region_end	end address of the region
- * @param       curcontents     buffer containg the current contents of the flash
- * @param       newcontents     buffer containg the new contents of the flash
- * @param	erase_layout	erase layout
- * @param	all_skipped	pointer to the flag to chec if any block was erased
- */
-int erase_write(struct flashctx *const flashctx, chipoff_t region_start, chipoff_t region_end,
+static int erase_write_helper(struct flashctx *const flashctx, chipoff_t region_start, chipoff_t region_end,
 		uint8_t *curcontents, uint8_t *newcontents,
 		struct erase_layout *erase_layout, bool *all_skipped)
 {
 	const size_t erasefn_count = count_usable_erasers(flashctx);
-	int ret = 0;
-	size_t i;
-	chipoff_t old_start = region_start, old_end = region_end;
-	align_region(erase_layout, flashctx, &region_start, &region_end);
-
-	uint8_t *old_start_buf = NULL, *old_end_buf = NULL;
-	old_start_buf = (uint8_t *)malloc(old_start - region_start);
-	if (!old_start_buf) {
-		msg_cerr("Not enough memory!\n");
-		ret = -1;
-		goto _end;
-	}
-	old_end_buf = (uint8_t *)malloc(region_end - old_end);
-	if (!old_end_buf) {
-		msg_cerr("Not enough memory!\n");
-		ret = -1;
-		goto _end;
-	}
-
-	if (old_start - region_start) {
-		read_flash(flashctx, curcontents + region_start, region_start, old_start - region_start);
-		memcpy(old_start_buf, newcontents + region_start, old_start - region_start);
-		memcpy(newcontents + region_start, curcontents + region_start, old_start - region_start);
-	}
-	if (region_end - old_end) {
-		read_flash(flashctx, curcontents + old_end, old_end, region_end - old_end);
-		memcpy(old_end_buf, newcontents + old_end, region_end - old_end);
-		memcpy(newcontents + old_end, curcontents + old_end, region_end - old_end);
-	}
 
 	// select erase functions
-	for (i = 0; i < erase_layout[erasefn_count - 1].block_count; i++) {
+	for (size_t i = 0; i < erase_layout[erasefn_count - 1].block_count; i++) {
 		if (erase_layout[erasefn_count - 1].layout_list[i].start_addr <= region_end &&
 			region_start <= erase_layout[erasefn_count - 1].layout_list[i].end_addr)
 			select_erase_functions(flashctx, erase_layout,
@@ -294,56 +279,29 @@ int erase_write(struct flashctx *const flashctx, chipoff_t region_start, chipoff
 						region_start, region_end);
 	}
 
-	for (i = 0; i < erasefn_count; i++) {
+	// erase
+	for (size_t i = 0; i < erasefn_count; i++) {
 		for (size_t j = 0; j < erase_layout[i].block_count; j++) {
-			if (!erase_layout[i].layout_list[j].selected)	continue;
+			if (!erase_layout[i].layout_list[j].selected)
+				continue;
 
-			// erase
 			chipoff_t start_addr = erase_layout[i].layout_list[j].start_addr;
 			unsigned int block_len = erase_layout[i].layout_list[j].end_addr - start_addr + 1;
 			const uint8_t erased_value = ERASED_VALUE(flashctx);
 			// execute erase
 			erasefunc_t *erasefn = lookup_erase_func_ptr(erase_layout[i].eraser);
 
-			if (!flashctx->flags.skip_unwritable_regions) {
-				if (check_for_unwritable_regions(flashctx, start_addr, block_len))
-					goto _end;
+
+			if (erasefn(flashctx, start_addr, block_len)) {
+				return -1;
+			}
+			if (flashctx->flags.verify_after_write
+				&& check_erased_range(flashctx, start_addr, block_len)) {
+				msg_cerr("ERASE FAILED!\n");
+				return -1;
 			}
 
-			unsigned int len;
-			for (unsigned int addr = start_addr; addr < start_addr + block_len; addr += len) {
-				struct flash_region region;
-				get_flash_region(flashctx, addr, &region);
-
-				len = min(start_addr + block_len, region.end) - addr;
-
-				if (region.write_prot) {
-					msg_gdbg("%s: cannot erase inside %s "
-						"region (%#08"PRIx32"..%#08"PRIx32"), skipping range (%#08x..%#08x).\n",
-						 __func__, region.name,
-						 region.start, region.end - 1,
-						 addr, addr + len - 1);
-					free(region.name);
-					continue;
-				}
-
-				msg_gdbg("%s: %s region (%#08"PRIx32"..%#08"PRIx32") is "
-					"writable, erasing range (%#08x..%#08x).\n",
-					 __func__, region.name,
-					 region.start, region.end - 1,
-					 addr, addr + len - 1);
-				free(region.name);
-
-				if (erasefn(flashctx, addr, len)) {
-					ret = -1;
-					goto _end;
-				}
-				if (check_erased_range(flashctx, addr, len)) {
-					ret = - 1;
-					msg_cerr("ERASE FAILED!\n");
-					goto _end;
-				}
-			}
+			update_progress(flashctx, FLASHROM_PROGRESS_ERASE, block_len);
 
 			// adjust curcontents
 			memset(curcontents+start_addr, erased_value, block_len);
@@ -362,13 +320,12 @@ int erase_write(struct flashctx *const flashctx, chipoff_t region_start, chipoff
 					erase_len - start_here, &start_here,
 					flashctx->chip->gran))) {
 		// execute write
-		ret = write_flash(flashctx,
+		int ret = write_flash(flashctx,
 				newcontents + region_start + start_here,
 				region_start + start_here, len_here);
 		if (ret) {
-			msg_cerr("Write failed at %#zx, Abort.\n", i);
-			ret = -1;
-			goto _end;
+			msg_cerr("Write failed at %#x, Abort.\n", region_start + start_here);
+			return -1;
 		}
 
 		// adjust curcontents
@@ -379,12 +336,100 @@ int erase_write(struct flashctx *const flashctx, chipoff_t region_start, chipoff
 		*all_skipped = false;
 	}
 
-_end:
-	memcpy(newcontents + region_start, old_start_buf, old_start - region_start);
-	memcpy(newcontents + old_end, old_end_buf, region_end - old_end);
+	return 0;
+}
 
-	free(old_start_buf);
-	free(old_end_buf);
+
+/*
+ * @brief	wrapper to use the erase algorithm
+ *
+ * @param	flashctx	flash context
+ * @param	region_start	start address of the region
+ * @param	region_end	end address of the region
+ * @param       curcontents     buffer containg the current contents of the flash
+ * @param       newcontents     buffer containg the new contents of the flash
+ * @param	erase_layout	erase layout
+ * @param	all_skipped	pointer to the flag to chec if any block was erased
+ */
+int erase_write(struct flashctx *const flashctx, chipoff_t region_start, chipoff_t region_end,
+		uint8_t *curcontents, uint8_t *newcontents,
+		struct erase_layout *erase_layout, bool *all_skipped)
+{
+	int ret = 0;
+	chipoff_t old_start = region_start, old_end = region_end;
+	align_region(erase_layout, flashctx, &region_start, &region_end);
+
+	if (!flashctx->flags.skip_unwritable_regions) {
+		if (check_for_unwritable_regions(flashctx, region_start, region_end - region_start + 1))
+			return -1;
+	}
+
+	uint8_t *old_start_buf = NULL, *old_end_buf = NULL;
+	const size_t start_buf_len = old_start - region_start;
+	const size_t end_buf_len = region_end - old_end;
+
+	if (start_buf_len) {
+		old_start_buf = (uint8_t *)malloc(start_buf_len);
+		if (!old_start_buf) {
+			msg_cerr("Not enough memory!\n");
+			ret = -1;
+			goto _end;
+		}
+		read_flash(flashctx, curcontents + region_start, region_start, start_buf_len);
+		memcpy(old_start_buf, newcontents + region_start, start_buf_len);
+		memcpy(newcontents + region_start, curcontents + region_start, start_buf_len);
+	}
+	if (end_buf_len) {
+		chipoff_t end_offset = old_end + 1;
+		old_end_buf = (uint8_t *)malloc(end_buf_len);
+		if (!old_end_buf) {
+			msg_cerr("Not enough memory!\n");
+			ret = -1;
+			goto _end;
+		}
+		read_flash(flashctx, curcontents + end_offset, end_offset, end_buf_len);
+		memcpy(old_end_buf, newcontents + end_offset, end_buf_len);
+		memcpy(newcontents + end_offset, curcontents + end_offset, end_buf_len);
+	}
+
+	unsigned int len;
+	for (unsigned int addr = region_start; addr <= region_end; addr += len) {
+		struct flash_region region;
+		get_flash_region(flashctx, addr, &region);
+		len = min(region_end, region.end) - addr + 1;
+
+		if (region.write_prot) {
+			msg_gdbg("%s: cannot erase inside %s "
+				"region (%#08"PRIx32"..%#08"PRIx32"), skipping range (%#08x..%#08x).\n",
+				 __func__, region.name,
+				 region.start, region.end,
+				 addr, addr + len - 1);
+			free(region.name);
+			continue;
+		}
+
+		msg_gdbg("%s: %s region (%#08"PRIx32"..%#08"PRIx32") is "
+			"writable, erasing range (%#08x..%#08x).\n",
+			 __func__, region.name,
+			 region.start, region.end,
+			 addr, addr + len - 1);
+		free(region.name);
+
+
+		ret = erase_write_helper(flashctx, addr, addr + len - 1, curcontents, newcontents, erase_layout, all_skipped);
+		if (ret)
+			goto _end;
+	}
+_end:
+	if (old_start_buf) {
+		memcpy(newcontents + region_start, old_start_buf, start_buf_len);
+		free(old_start_buf);
+	}
+
+	if (old_end_buf) {
+		memcpy(newcontents + old_end + 1, old_end_buf, end_buf_len);
+		free(old_end_buf);
+	}
 
 	msg_cinfo("Erase/write done from %"PRIx32" to %"PRIx32"\n", region_start, region_end);
 	return ret;

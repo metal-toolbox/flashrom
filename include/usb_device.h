@@ -1,17 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2020, Google Inc. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2020, Google Inc. All rights reserved.
  */
 
 #ifndef USB_DEVICE_H
@@ -28,6 +19,8 @@
 #include <libusb.h>
 #include <stdint.h>
 #include <stdbool.h>
+
+#include "log.h"
 
 /*
  * The LIBUSB_ERROR macro converts a libusb failure code into an error code that
@@ -177,5 +170,52 @@ int usb_device_claim(struct usb_device *device);
  *     The next device in the device list.
  */
 struct usb_device *usb_device_free(struct usb_device *device);
+
+/* Log the BCD device revision from a USB descriptor at debug level. */
+static inline void usb_dev_msg_device_revision(const struct libusb_device_descriptor *desc)
+{
+	msg_pdbg("Device revision is %d.%01d.%01d\n",
+		 (desc->bcdDevice >> 8) & 0x00FF,
+		 (desc->bcdDevice >> 4) & 0x000F,
+		 (desc->bcdDevice >> 0) & 0x000F);
+}
+
+/*
+ * Detach any kernel driver, claim the given interface, and log the device
+ * revision. On success the interface is held and must be released by the
+ * caller. On failure the interface is left unclaimed, so the caller only has
+ * to close the handle.
+ */
+static inline int usb_dev_claim_and_describe(struct libusb_device_handle *handle, int interface)
+{
+	int ret = libusb_detach_kernel_driver(handle, interface);
+	if (ret != 0 && ret != LIBUSB_ERROR_NOT_FOUND)
+		msg_pwarn("Cannot detach the existing USB driver. Claiming the interface may fail. %s\n",
+			libusb_error_name(ret));
+
+	ret = libusb_claim_interface(handle, interface);
+	if (ret != 0) {
+		msg_perr("Failed to claim interface %d: '%s'\n", interface, libusb_error_name(ret));
+		return ret;
+	}
+
+	struct libusb_device *dev = libusb_get_device(handle);
+	if (!dev) {
+		msg_perr("Failed to get device from device handle.\n");
+		libusb_release_interface(handle, interface);
+		return -1;
+	}
+
+	struct libusb_device_descriptor desc;
+	ret = libusb_get_device_descriptor(dev, &desc);
+	if (ret < 0) {
+		msg_perr("Failed to get device descriptor: '%s'\n", libusb_error_name(ret));
+		libusb_release_interface(handle, interface);
+		return ret;
+	}
+
+	usb_dev_msg_device_revision(&desc);
+	return 0;
+}
 
 #endif /* USB_DEVICE_H */

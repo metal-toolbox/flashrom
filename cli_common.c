@@ -1,24 +1,16 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>
- * Copyright (C) 2009 Carl-Daniel Hailfinger
- * Copyright (C) 2011-2014 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2009 Uwe Hermann <uwe@hermann-uwe.de>
+ * SPDX-FileCopyrightText: 2009 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2011-2014 Stefan Tauner
  */
 
-#include <stdlib.h>
-#include <string.h>
+#include "platform/string.h"
 #include "flash.h"
+#include "log.h"
+#include <stdlib.h>
 
 void print_chip_support_status(const struct flashchip *chip)
 {
@@ -80,6 +72,8 @@ void print_chip_support_status(const struct flashchip *chip)
 			  "work correctly for you with this flash chip. Please include the flashrom log\n"
 			  "file for all operations you tested (see the man page for details), and mention\n"
 			  "which mainboard or programmer you tested in the subject line.\n"
+			  "You can also try to follow the instructions here:\n"
+			  "https://www.flashrom.org/contrib_howtos/how_to_mark_chip_tested.html\n"
 			  "Thanks for your help!\n");
 	}
 }

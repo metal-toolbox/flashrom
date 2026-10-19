@@ -11,16 +11,20 @@ NAME
 SYNOPSIS
 --------
 
-| **flashrom** [-h|-R|-L|-z|
+| **flashrom** [-h|-R|-L|
 |          -p <programmername>[:<parameters>] [-c <chipname>]
 |            (--flash-name|--flash-size|
-|             [-E|-x|-r <file>|-w <file>|-v <file>]
-|             [(-l <file>|--ifd|--fmap|--fmap-file <file>)
+|             [-E|-x|-r [<file>]|-w [<file>]|-v [<file>]]
+|             [(-l <file>|--ifd|--fmap|--fmap-file <file>|--fmap-verify)
 |               [-i <include>[:<file>]]]
 |             [--wp-status] [--wp-list] [--wp-enable|--wp-disable]
 |             [--wp-range <start>,<length>|--wp-region <region>]
-|             [-n] [-N] [-f])]
-|         [-V[V[V]]] [-o <logfile>] [--progress]
+|             [-n] [-N] [-f]
+|             [--rpmc-root-key <keyfile>] [--key-data <value>]
+|             [--counter-address <address>]
+|             [--get-rpmc-status] [--write-root-key] [--update-hmac-key]
+|             [--increment-counter <current>] [--get-counter])]
+|         [-V[V[V]]] [-o <logfile>] [--progress] [--sacrifice-ratio <ratio>] [--read-repeated[=<count>] [<file>]]
 
 
 DESCRIPTION
@@ -39,16 +43,19 @@ which use various protocols such as LPC, FWH, parallel flash, or SPI.
 OPTIONS
 -------
 
-You can specify one of ``-h``, ``-R``, ``-L``, ``-z``, ``-E``, ``-r``, ``-w``, ``-v`` or no operation.
+You can specify one of ``-h``, ``-R``, ``-L``, ``-E``, ``-r``, ``-w``, ``-v``, a RPMC command or no operation.
 If no operation is specified, **flashrom** will only probe for flash chips. It is recommended that if you try **flashrom** the
 first time on a system, you run it in probe-only mode and check the output.
 Also you are advised to make a backup of your current ROM contents with ``-r`` before you try to write a new image.
 All operations involving any chip access (probe/read/write/...) require the ``-p/--programmer`` option to be used (please see below).
 
 
-**-r, --read <file>**
+**-r, --read [<file>]**
         Read flash ROM contents and save them into the given **<file>**.
         If the file already exists, it will be overwritten.
+
+        The **<file>** parameter is required here unless reading is restricted to one or more flash regions via the ``-i/--include`` parameter
+        and the file is specified there. See the ``--include`` section below for examples.
 
 
 **-w, --write (<file>|-)**
@@ -60,16 +67,19 @@ All operations involving any chip access (probe/read/write/...) require the ``-p
         This copy is updated along with the write operation. In case of erase errors it is even re-read completely.
         After writing has finished and if verification is enabled, the whole flash chip is read out and compared with the input image.
 
+        The **<file>** parameter is required here unless writing is restricted to one or more flash regions via the ``-i/--include`` parameter
+        and the file is specified there. See the ``--include`` section below for examples.
+
 
 **-n, --noverify**
-        Skip the automatic verification of flash ROM contents after writing. Using this option is **not** recommended,
+        Skip the automatic verification of flash ROM contents after writing or erasing. Using this option is **not** recommended,
         you should only use it if you know what you are doing and if you feel that the time for verification takes too long.
 
         Typical usage is::
 
                 flashrom -p prog -n -w <file>
 
-        This option is only useful in combination with ``--write``.
+        This option is only useful in combination with ``--write`` or ``--erase``.
 
 
 **-N, --noverify-all**
@@ -86,6 +96,9 @@ All operations involving any chip access (probe/read/write/...) require the ``-p
 **-v, --verify (<file>|-)**
         Verify the flash ROM contents against the given **<file>**.
         If **-** is provided instead, contents will be written to the stdout.
+
+        The **<file>** parameter is required here unless verification is restricted to one or more flash regions via the ``-i/--include`` parameter
+        and the file is specified there. See the ``--include`` section below for examples.
 
 
 **-E, --erase**
@@ -166,6 +179,21 @@ All operations involving any chip access (probe/read/write/...) require the ``-p
                 flashrom -p prog --fmap-file some.rom --image COREBOOT -w some.rom
 
 
+**--fmap-verify**
+        Read ROM layout from fmap embedded in the ROM and verify that it matches the fmap in the file to be written.
+
+        This option is mutually exclusive with **--fmap**, **--fmap-file**, **--layout**, and **--ifd**.
+        It can only be used with write operations, as it does not make sense otherwise. Before writing, **flashrom**
+        will read the fmap from both the flash chip and the file to be written, then compare them. If the fmaps do
+        not match, the write operation will be aborted.
+
+        This is useful to prevent accidentally writing a ROM image with an incompatible layout to a flash chip.
+
+        If you only want to update the **COREBOOT** region defined in the fmap, and verify that the fmap matches, run::
+
+                flashrom -p prog --fmap-verify -w new.rom --image COREBOOT
+
+
 **--ifd**
         Read ROM layout from Intel Firmware Descriptor.
 
@@ -183,23 +211,66 @@ All operations involving any chip access (probe/read/write/...) require the ``-p
 
 
 **-i, --include <region>[:<file>]**
-        Read or write only **<region>** to or from ROM.
-        The **-i** option may be used multiple times if the user wishes to read or write multiple regions using a single command.
+        Read, write, or verify only **<region>** to or from ROM.
+        The **-i** option may be used multiple times if the user wishes to read, write, or verify multiple regions using a single command.
 
         The user may optionally specify a corresponding **<file>** for any region they wish to read or write.
         A read operation will read the corresponding regions from ROM and write individual files for each one.
         A write option will read file(s) and write to the corresponding region(s) in ROM.
 
-        For write operations, files specified using ``-i`` take precedence over content from the argument to ``-w``.
+        For all read/write/verify operations, the **<file>** parameter following those operations becomes optional and will be ignored
+        if present whenever the <file> is specified following the region.
+
+        Common rules for -r/-w/-v syntax parsing:
+
+         - If no filename is specified at all, quit.
+
+         - If a file is specified for -r/-w/-v and no files are specified with
+           -i args (or -i is not used), then that file will be used for reading/
+           writing/verifying the entire ROM.
+
+         - If no filename is specified for -r/-w/-v, but files are specified
+           for -i, then the number of file arguments for -i options must be
+           equal to the total number of -i options.
+
+        Rules for reading:
+
+         - If files are specified for -i args but not -r, do partial reads for
+           each -i arg, creating a new file for each region. Each -i option
+           must specify a filename.
+
+         - If filenames are specified for -r and -i args, then:
+
+             - Do partial read for each -i arg, creating a new file for
+               each region where a filename is provided (-i region:filename).
+             - Create a ROM-sized file with partially filled content. For each
+               -i arg, fill the corresponding offset with content from ROM.
+
+        Rules for writing and verifying:
+
+         - If files are specified for both -w/-v and -i args, -i files take
+           priority (files specified for -w/-v are unused).
+
+         - If files are specified for -i args but not -w, do partial writes
+           for each -i arg. Likewise for -v and -i args. All -i args must
+           supply a filename. Any omission is considered ambiguous.
+
+         - Regions with a filename associated must not overlap. This is also
+           considered ambiguous. Note: This is checked later since it requires
+           processing the layout/fmap first.
 
         Examples:
                 To read regions named **foo** and **bar** in layout file **<layout>** into region-sized files **foo.bin** and **bar.bin**, run::
 
-                        flashrom -p prog -l <layout> -i foo:foo.bin -i bar:bar.bin -r rom.bin
+                        flashrom -p prog -r -l <layout> -i foo:foo.bin -i bar:bar.bin
 
                 To write files **foo.bin** and **bar.bin** into regions named **foo** and **bar** in layout file **<layout>** to the ROM, run::
 
-                        flashrom -p prog -l <layout> -i foo:foo.bin -i bar:bar.bin -w rom.bin
+                        flashrom -p prog -w -l <layout> -i foo:foo.bin -i bar:bar.bin
+
+                To verify regions named **foo** and **bar** using layout file **<layout>** and files **foo.bin** and **bar.bin**, run::
+
+                        flashrom -p prog -v -l <layout> -i foo:foo.bin -i bar:bar.bin
 
 
 **--wp-status**
@@ -256,18 +327,13 @@ All operations involving any chip access (probe/read/write/...) require the ``-p
         For verification you have to test an ERASE and/or WRITE operation, so make sure you only do that if you have proper means to recover from failure!
 
 
-**-z, --list-supported-wiki**
-        Same as ``--list-supported``, but outputs the supported hardware in MediaWiki syntax,
-        so that it can be easily pasted into the `supported hardware wiki page <https://flashrom.org/Supported_hardware>`_.
-        Please note that MediaWiki output is not compiled in by default.
-
-
 **-p, --programmer <name>[:parameter[,parameter[,parameter]]]**
         Specify the programmer device. This is mandatory for all operations involving any chip access (probe/read/write/...).
         Currently supported are:
 
         * ``internal``            (for in-system flashing in the mainboard)
         * ``dummy``               (virtual programmer for testing **flashrom**)
+        * ``fault``               (fault injection wrapper for testing)
         * ``nic3com``             (for flash ROMs on 3COM network cards)
         * ``nicrealtek``          (for flash ROMs on Realtek and SMC 1211 network cards)
         * ``nicnatsemi``          (for flash ROMs on National Semiconductor DP838* network cards)
@@ -306,6 +372,8 @@ All operations involving any chip access (probe/read/write/...) require the ``-p
         * ``mediatek_i2c_spi``    (for SPI flash ROMs attached to some Mediatek display devices accessible over I2C)
         * ``dirtyjtag_spi``       (for SPI flash ROMs attached to DirtyJTAG-compatible devices)
         * ``asm106x``             (for SPI flash ROMs attached to asm106x PCI SATA controllers)
+        * ``spidriver``           (for SPI flash ROMs attached to an Excamera Labs SPIDriver)
+        * ``nv_sma_spi``          (for SPI flash ROMs attached to an Nvidia System Management Agent)
 
         Some programmers have optional or mandatory parameters which are described in detail in the
         **PROGRAMMER-SPECIFIC INFORMATION** section. Support for some programmers can be disabled at compile time.
@@ -323,12 +391,127 @@ All operations involving any chip access (probe/read/write/...) require the ``-p
 
 
 **--progress**
-        [Experimental feature] Show progress percentage of operations on the standard output.
+        Show progress percentage of operations on the standard output.
 
+**--sacrifice-ratio <ratio>**
+        Fraction (as a percentage, 0-50) of an erase block that may be erased even if unmodified.
+        Larger values may complete programming faster, but may also hurt chip longevity by erasing cells unnecessarily.
+
+        Default is 0, S+1 size block only selected if all the S size blocks inside it need to be erased in full.
+        50 means that if more than a half of the area needs to be erased,
+        a S+1 size block can be selected to cover all the area with one erase.
+        The tradeoff is the speed of programming operation VS the longevity of the chip. Default is longevity.
+
+        DANGEROUS! It wears your chip faster!
+
+
+**--read-repeated [=<count>] [<file>]**
+        Read the flash chip <count> times (default: 3, minimum: 3, maximum: 100)
+        and use majority voting to detect unstable connections. A strict majority
+        (more than half of all reads) must agree for the result to be trusted.
+        A tie between two content groups is treated as a failure.
+
+        Reports ``X/N reads matched``. If all reads agree the connection is
+        declared stable; if a majority agrees but not all, a flakiness warning
+        is printed. If no majority is found the operation fails with an error.
+
+        If ``<file>`` is given and a majority is found, the majority content is
+        saved to that file. Without ``<file>``, the option acts as a connection
+        stability check only.
+
+        Cannot be combined with ``-r``, ``-w``, ``-E``, or ``-v``.
+
+        This option allocates memory proportional to the number of distinct read
+        results (not the total count). On a stable connection only one copy of the
+        flash content is kept. On unstable connections with many unique results,
+        memory usage may be significant and the option may not be suitable for
+        environments with very limited RAM.
+
+        Examples::
+
+                flashrom -p <programmer> --read-repeated
+                flashrom -p <programmer> --read-repeated=5
+                flashrom -p <programmer> --read-repeated=5 dump.bin
 
 **-R, --version**
         Show version information and exit.
 
+RPMC commands
+^^^^^^^^^^^^^
+
+This section describes the commands added in JESD260. They are only supported on specific chip models.
+If the chip is detected correctly but you still get ``Error: RPMC commands are not supported on this device``,
+try using ``-c "SFDP-capable chip"`` for automatic feature detection.
+
+**--get-rpmc-status**
+        Read the extended RPMC status by issuing a OP2 command
+
+        Example::
+
+                flashrom -p prog --get-rpmc-status
+
+
+**--write-root-key**
+        Write new root key from **--rpmc-root-key**  file for **--counter-address**.
+
+        Example::
+
+                flashrom -p prog --rpmc-root-key <keyfile> --counter-address <address> --write-root-key
+
+**--update-hmac-key**
+        Update the hmac key register for **--counter-address** with the provided **--key-data**.
+        Requires valid **--rpmc-root-key**.
+
+        Example::
+
+                flashrom -p prog --rpmc-root-key <keyfile> --counter-address <address> --key-data <value> --update-hmac-key
+
+**--increment-counter <current>**
+        Increments the counter at **--counter-address** by one above the **<current>**.
+        Requires previously updated **--key-data** and valid **--rpmc-root-key**.
+
+        Examples::
+
+                flashrom -p prog --rpmc-root-key <keyfile> --counter-address <address> --key-data <value> --increment-counter 12
+                flashrom -p prog --rpmc-root-key <keyfile> --counter-address <address> --key-data <value> -w rom.bin --update-hmac-key --increment-counter 25
+
+**--get-counter**
+        Get the current counter value for **--counter-address**.
+        Requires previously updated **--key-data** and valid **--rpmc-root-key**.
+
+        Examples::
+
+                flashrom -p prog --rpmc-root-key <keyfile> --counter-address <address> --key-data <value> --get-counter
+                flashrom -p prog --rpmc-root-key <keyfile> --counter-address <address> --key-data <value> --update-hmac-key --get-counter
+
+RPMC options
+^^^^^^^^^^^^
+
+**--counter-address <address>**
+        Target the counter at **<address>** for any RPMC operations.
+        Addressing starts at 0.
+        Defaults to 0.
+
+        Example::
+
+                flashrom --counter-address 2
+
+**--rpmc-root-key <keyfile>**
+        Use **<keyfile>** as location of 32-byte root key.
+
+        Example::
+
+                flashrom --rpmc-root-key /home/user/some_key.bin
+
+**--key-data <value>**
+        Hexadecimal **<value>** will be used as 4-byte key data in RPMC operations.
+        Defaults to 0.
+
+        Example::
+
+                flashrom --key-data 12abc
+
+.. _programmer-specific information:
 
 PROGRAMMER-SPECIFIC INFORMATION
 -------------------------------
@@ -379,6 +562,20 @@ internal programmer
         If reading succeeds and the contents of the read file look legit you can try to write the new image.
         You should enable the board enable code in any case now, as it has been written because it is known that writing/erasing
         without the board enable is going to fail. In any case (success or failure), please report to the **flashrom** mailing list, see below.
+
+**Linux MTD**
+        On Intel platforms the kernel's ``spi-intel`` driver claims the PCH flash controller and exposes the flash
+        as an MTD device. The internal programmer uses that device when it is present instead of talking to the
+        chipset itself, and reports doing so.
+
+        This path is more restricted than chipset access. Regions taken from the flash descriptor, protected range
+        handling and chip write protection are unavailable, and ranges the controller refuses to read fail the whole
+        operation unless ``linux_mtd:ignore_read_errors=yes`` is used. To get the chipset path instead, unbind the
+        driver from the controller, which is at ``00:1f.5`` on current chipsets::
+
+                echo 0000:00:1f.5 > /sys/bus/pci/drivers/intel-spi/unbind
+
+        Note that doing so gives up the protections the kernel driver enforces.
 
 **Coreboot**
         On systems running coreboot, **flashrom** checks whether the desired image matches your mainboard.
@@ -487,7 +684,7 @@ internal programmer
 **Laptops**
         Using **flashrom** on older laptops that don't boot from the SPI bus is dangerous and may easily make your hardware unusable
         (see also the **BUGS** section). The embedded controller (EC) in some machines may interact badly with flashing.
-        More information is `in the wiki <https://flashrom.org/Laptops>`_.
+        More information is at :doc:`/contrib_howtos/laptops_and_ec`.
         Problems occur when the flash chip is shared between BIOS and EC firmware, and the latter does not expect **flashrom**
         to access the chip. While **flashrom** tries to change the contents of that memory the EC might need to fetch new
         instructions or data from it and could stop working correctly. Probing for and reading from the chip may also irritate
@@ -621,6 +818,75 @@ Example::
         syntax where ``state`` is ``yes`` or ``no`` (default value). ``yes`` means active state of the pin implies that chip is
         write-protected (on real hardware the pin is usually negated, but not here).
 
+**Frequency**
+        Frequency can be specified in ``Hz`` (default), ``KHz``, or ``MHz`` (not case sensitive).
+        If ``freq`` parameter is passed in from command line, commands will delay for certain time before returning,
+        so that to emulate the requested frequency.
+
+        Valid range is [1Hz, 8000Mhz] and there is no delay by default.
+
+        The delay of an SPI command is proportional to the number of bits send over SPI bus in both directions
+        and is calculated based on the assumption that we transfer at 1 bit/Hz::
+
+                flashrom -p dummy:emulate=W25Q128FV,freq=64mhz
+
+
+fault programmer
+^^^^^^^^^^^^^^^^
+
+The fault programmer is a programmable fault-injection layer that wraps an existing
+programmer and injects deterministic, reproducible faults to simulate unreliable
+hardware behaviour. It is intended for testing verification logic, retry mechanisms,
+and robustness of flashing workflows. Where ``dummy`` tests the happy path, ``fault``
+tests every other path.
+
+The ``backend`` parameter is required and names the underlying programmer::
+
+        flashrom -p fault:backend=dummy,bus=spi,emulate=W25Q128FV,seed=42
+
+All fault-specific parameters are extracted first; remaining parameters are forwarded
+to the backend programmer. Currently only SPI backends are supported.
+
+**Determinism**
+        The optional ``seed`` parameter initialises the PRNG (default: 0).
+        Same seed + same config = identical faults across runs::
+
+                flashrom -p fault:backend=dummy,...,seed=42
+
+**Bit corruption**
+        ``flip_prob`` sets the per-byte probability of flipping a random bit in read data::
+
+                flashrom -p fault:backend=dummy,...,flip_prob=0.001
+
+**Short reads**
+        ``short_read_prob`` returns a truncated read buffer.  ``min_read_ratio`` (default: 0.5)
+        controls the minimum fraction of bytes returned::
+
+                flashrom -p fault:backend=dummy,...,short_read_prob=0.1,min_read_ratio=0.8
+
+**Write faults**
+        ``write_fail_prob`` makes writes return an error.
+        ``write_lie_prob`` makes writes return success without writing anything.
+        ``partial_write_prob`` writes only a random subset of the data::
+
+                flashrom -p fault:backend=dummy,...,write_lie_prob=0.2
+
+**Logging**
+        All injected faults are logged at debug verbosity (``-V``).  A summary of
+        injected faults is printed on shutdown.
+
+**Example use cases**
+
+Detect unstable reads::
+
+        flashrom -p fault:backend=dummy,...,flip_prob=0.001,seed=1 -r a.bin
+        flashrom -p fault:backend=dummy,...,flip_prob=0.001,seed=2 -r b.bin
+        cmp a.bin b.bin
+
+Test write verification::
+
+        flashrom -p fault:backend=dummy,...,write_lie_prob=0.2 -w image.bin
+
 
 nic3com, nicrealtek, nicnatsemi, nicintel, nicintel_eeprom, nicintel_spi, gfxnvidia, ogp_spi, drkaiser, satasii, satamv, atahpt, atavia, atapromise, it8212 programmers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -635,17 +901,48 @@ is the PCI function number of the desired device. Example::
 
         flashrom -p nic3com:pci=05:04.0
 
+Some of these programmers have more info below.
 
 atavia programmer
 ^^^^^^^^^^^^^^^^^
+
+The VT6421A is a PATA/SATA PCI controller that can be found on various cheap PCI cards.
+Currently there is a `datasheet <http://spacehopper.org/mirrors/ftp.vtbridge.org/Docs/Storage/DS_VT6421A_100_CCPL.PDF>`_.
+
+There exists a patch for flashrom that makes it possible to access the attached flash chip,
+but it has problems with some cards. They seem to need an offset added to the chip address for unknown reasons.
 
 Due to the mysterious address handling of the VIA VT6421A controller the user can specify an offset with the::
 
         flashrom -p atavia:offset=addr
 
 syntax where ``addr`` will be interpreted as usual (leading 0x (0) for hexadecimal (octal) values, or else decimal).
-For more information please see `its wiki page <https://flashrom.org/VT6421A "its wiki page>`_.
 
+Cards found in the wild:
+
++----------------+----------------------+--------+---------+------------+-------------+----------+----------------------+-------+
+| Vendor	 | Model	        | rev.	 | country | lot code	| Chip	      |	Size [B] | Offset		| lspci |
++================+======================+========+=========+============+=============+==========+======================+=======+
+|		 |		        |	 |	   |		| W39V040BPZ  |	512k	 |			|	|
++----------------+----------------------+--------+---------+------------+-------------+----------+----------------------+-------+
+| Eminent	 | EM2001	        | 0910CD | Taiwan  | 2IA0022481	| SST49LF020A |	256k	 | 0xfff00000		| [2]	|
++----------------+----------------------+--------+---------+------------+-------------+----------+----------------------+-------+
+| "SATA CONNECT" | "High speed 2/4-port	| 0901CD | Taiwan  | 2IA0022471	| Pm49FL004   |	512k	 | 0xfff80000 =		| [3]	|
+|		 | Serial ATA card"     |	 |	   |		|	      |		 | 0xffffffff - size    |	|
+| 		 |		        |	 |	   |		|	      |		 | + 1 (aka phys_addr)	|	|
++----------------+----------------------+--------+---------+------------+-------------+----------+----------------------+-------+
+| Gembird	 |	SATA-3	        |	 |	   |		| W39V040C    |	512k	 |			|	|
++----------------+----------------------+--------+---------+------------+-------------+----------+----------------------+-------+
+|		 |	HZ-006	        |	 |	   |		| Pm39LV512   |	64k	 |			| [4]	|
++----------------+----------------------+--------+---------+------------+-------------+----------+----------------------+-------+
+
+* `[2] <http://paste.flashrom.org/view.php?id=1369>`_
+* `[3] <http://www.flashrom.org/pipermail/flashrom/2012-September/009992.html>`_
+* `[4] <http://www.flashrom.org/pipermail/flashrom/2012-December/010318.html>`_
+
+The revision consists of two characters that are printed below the "VT6421A" string on the chip
+prefixed by 4 numbers that encode the production year and week.
+The country is noted right of the revision.
 
 atapromise programmer
 ^^^^^^^^^^^^^^^^^^^^^
@@ -654,6 +951,18 @@ This programmer is currently limited to 32 kB, regardless of the actual size of 
 fact that, on the tested device (a Promise Ultra100), not all of the chip's address lines were actually connected.
 You may use this programmer to flash firmware updates, since these are only 16 kB in size (padding to 32 kB is required).
 
+nic3com programmer
+^^^^^^^^^^^^^^^^^^
+
+flashrom supports some 3Com network cards to reflash the (parallel) flash attached to these cards,
+but it is also possible to use these cards to reflash other chips which fit in there electrically.
+Please note that the small number of address lines connected to the chip may make accessing large chips impossible.
+The maximum supported chip size is 128KB.
+
+nicintel_spi programmer
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Programmer for SPI flash ROMs on Intel Gigabit network cards. Tested on 32-bit hardware/PCI only.
 
 nicintel_eeprom programmer
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -665,6 +974,18 @@ themselves to be identified, the controller relies on correct size values writte
 Intel specifies following EEPROMs to be compatible:
 Atmel AT25128, AT25256, Micron (ST) M95128, M95256 and OnSemi (Catalyst) CAT25CS128.
 
+gfxnvidia programmer
+^^^^^^^^^^^^^^^^^^^^
+
+Flashrom supports some Nvidia graphic cards to reflash the (parallel) flash attached to these cards,
+but it is also possible to use these cards to reflash other chips which fit in there electrically.
+
+satasii programmer
+^^^^^^^^^^^^^^^^^^
+
+Flashrom supports some SiI ATA/SATA controllers to reflash the flash attached to these controller cards,
+but it is also possible to use these cards to reflash other chips which fit in there electrically.
+Please note that the small number of address lines connected to the chip may make accessing large chips impossible.
 
 ft2232_spi programmer
 ^^^^^^^^^^^^^^^^^^^^^
@@ -741,7 +1062,15 @@ Example that sets the frequency to 2 MHz::
 
         flashrom -p serprog:dev=/dev/device:baud,spispeed=2M
 
-More information about serprog is available in **serprog-protocol.txt** in the source distribution.
+Optional ``cs`` parameter can be used to switch which chip select number is used. This allows connecting multiple
+chips at once and selecting which one to flash by software means (rather than rewiring)::
+
+        flashrom -p serprog:dev=/dev/device:baud,cs=0
+
+The particular programmer implementation needs to support this feature, for it to work. If the requested chip
+select isn't available, flashrom will fail safely.
+
+More information about serprog is available in this document: :doc:`/supported_hw/supported_prog/serprog/serprog-protocol`.
 
 
 buspirate_spi programmer
@@ -842,7 +1171,7 @@ An optional ``target`` parameter specifies which target chip should be used. Syn
 
         flashrom -p dediprog:target=value
 
-where ``value`` can be ``1`` or ``2`` to select target chip 1 or 2 respectively. The default is target chip 1.
+where ``value`` can be ``1``, ``2``, or ``3`` to select target chip 1, 2, or socket (3) respectively. The default is target chip 1.
 
 
 rayer_spi programmer
@@ -891,11 +1220,19 @@ USB device serial number to use specifically with::
 The servo device serial number can be found via ``lsusb``.
 Raiden will poll the ``ap`` target waiting for the system power to settle on the AP and EC flash devices.
 
-The optional ``custom_rst=true`` parameter changes the timeout value from 3ms to 10ms::
+The optional ``custom_rst=true`` parameter alters the behavior of the reset process::
 
         flashrom -p raiden_debug_spi:custom_rst=<true|false>
 
-syntax, where ``custom_rst=false`` is the implicit default timeout of 3ms. More information about the ChromiumOS servo
+syntax, where:
+
+``custom_rst=false`` is the implicit default timeout of 3ms
+
+and ``custom_rst=true`` set ``RAIDEN_DEBUG_SPI_REQ_ENABLE_AP_CUSTOM`` instead of ``RAIDEN_DEBUG_SPI_REQ_ENABLE_AP``.
+This custom reset will modify the timeout from 3ms to 10ms and will not set ``EC_RST_L``, meaning neither the EC nor the AP will be reset. With this setting, it's the user's responsibility to manage the reset signal manually or by configuring the GPIO.
+Failure to handle the reset signal appropriately will likely result in flashing errors.
+
+More information about the ChromiumOS servo
 hardware is available at `servos website <https://chromium.googlesource.com/chromiumos/third_party/hdctools/+/HEAD/docs/servo_v4.md>`_.
 
 
@@ -933,10 +1270,20 @@ linux_mtd programmer
 
 You may specify the MTD device to use with the::
 
-        flashrom -p linux_mtd:dev=/dev/mtdX
+        flashrom -p linux_mtd:dev=N
 
-syntax where ``/dev/mtdX`` is the Linux device node for your MTD device. If left unspecified the first MTD device found
-(e.g. /dev/mtd0) will be used by default.
+syntax where ``N`` is the number of the Linux device node (``/dev/mtdN``) for your MTD device. If left unspecified
+the first MTD device found (e.g. /dev/mtd0) will be used by default.
+
+Some controllers refuse to read firmware-protected ranges (e.g. Intel PCH protected range registers) and fail the
+whole read. With the optional ``ignore_read_errors=yes`` parameter unreadable blocks are replaced by the erased
+value (usually ``0xff``) and a warning is printed, allowing the accessible remainder of the flash to be dumped::
+
+        flashrom -p linux_mtd:dev=N,ignore_read_errors=yes -r dump.bin
+
+Note that this suppresses every read error reported by the kernel, not only refusals caused by firmware-protected
+ranges. Any block that cannot be read, for whatever reason, is replaced by the erased value, so the resulting dump
+may differ from the actual flash contents.
 
 Please note that the linux_mtd driver only works on Linux.
 
@@ -1004,8 +1351,14 @@ as per the device.
 ch347_spi programmer
 ^^^^^^^^^^^^^^^^^^^^
 
-The WCH CH347 programmer does not currently support any parameters. SPI frequency is fixed at 2 MHz, and CS0 is used
-as per the device.
+An optional ``spispeed`` parameter could be used to specify the SPI speed. This parameter is available for the CH347T and CH347F device.
+The default SPI speed is 15MHz if no value is specified.
+Syntax is::
+
+        flashrom -p ch347_spi:spispeed=value
+
+where ``value`` can be ``60M``, ``30M``, ``15M``, ``7.5M``, ``3.75M``, ``1.875M``, ``937.5K``, ``468.75K``.
+
 
 ni845x_spi programmer
 ^^^^^^^^^^^^^^^^^^^^^
@@ -1208,6 +1561,53 @@ and must explicitly be set to ``yes`` in order for the programmer to operate. Th
 mechanism in the driver to positively identify that a given I2C bus is actually connected to a supported device.
 
 
+spidriver programmer
+^^^^^^^^^^^^^^^^^^^^
+
+This is a SPI hardware interface with a display (https://spidriver.com/),
+connected as an FT230X USB serial device at a fixed baud rate of 460800.
+
+Firmware: https://github.com/jamesbowman/spidriver
+
+A required ``dev`` parameter specifies the Excamera Labs SPIDriver device node
+and an optional ``mode`` parameter specifies the mode of the SPI bus. The
+parameter delimiter is a comma. Syntax is::
+
+        flashrom -p spidriver:dev=/dev/device,mode=0
+
+where ``mode`` can be ``0``, ``1``, ``2`` or ``3``. The default is mode 0.
+Setting the SPI mode requires version 2 of the device firmware.
+
+An optional A and/or B parameter specifies the state of the SPIDriver A and B pins.
+This may be used to drive the A or B pins high or low before a transfer.
+Syntax is::
+
+        flashrom -p spidriver:a=state,b=state
+
+where ``state`` can be ``high`` or ``low``. The default ``state`` is ``high``.
+
+nv_sma_spi programmer
+^^^^^^^^^^^^^^^^^^^^^
+
+System Management Agent (SMA) programmer is a SoC which is working as a side band management on Nvidia server board.
+One of its functions is to flash firmware to other components.
+
+The Optional ``cs`` parameter can be used to switch which chip select number is used. This allows connecting multiple
+chips at once and selecting which one to flash.::
+
+        flashrom -p nv_sma_spi:cs=0
+
+The optional ``bus`` and ``devnum`` parameters indicate which Nvidia System Management Agent is selected when multiple
+SMAs are present. Both parameters must be specified simultaneously.::
+
+        flashrom -p nv_sma_spi:bus=0,devnum=1
+
+The optional ``spispeed`` parameter sets the target frequency in Hz. The Nvidia System Management Agent selects the closest
+supported frequency based on its capabilities. If the spispeed is not provided, the device default frequncy is used. An example
+to set target frequency at 15MHz.::
+
+        flashrom -p nv_sma_spi:spispeed=15000000
+
 EXAMPLES
 --------
 
@@ -1286,7 +1686,7 @@ REQUIREMENTS
 
         * needs TCP access to the network or userspace access to a serial port
 
-* buspirate_spi
+* buspirate_spi, spidriver
 
         * needs userspace access to a serial port
 
@@ -1294,7 +1694,7 @@ REQUIREMENTS
 
         * need access to the respective USB device via libusb API version 1.0
 
-* ch341a_spi, dediprog
+* ch341a_spi, dediprog, nv_sma_spi
 
         * need access to the respective USB device via libusb API version 1.0
 
@@ -1307,7 +1707,7 @@ REQUIREMENTS
         * have to be run as superuser/root
         * need raw access permission
 
-* serprog, buspirate_spi, dediprog, usbblaster_spi, ft2232_spi, pickit2_spi, ch341a_spi, digilent_spi, dirtyjtag_spi
+* serprog, buspirate_spi, dediprog, usbblaster_spi, ft2232_spi, pickit2_spi, ch341a_spi, digilent_spi, dirtyjtag_spi, spidriver
 
         * can be run as normal user on most operating systems if appropriate device permissions are set
 
@@ -1342,7 +1742,7 @@ Laptops
 Using **flashrom** on older laptops is dangerous and may easily make your hardware unusable. **flashrom** will attempt to detect
 if it is running on a susceptible laptop and restrict flash-chip probing for safety reasons. Please see the detailed
 discussion of this topic and associated **flashrom** options in the **Laptops** paragraph in the **internal programmer**
-subsection of the **PROGRAMMER-SPECIFIC INFORMATION** section and the information `in our wiki <https://flashrom.org/Laptops>`_.
+subsection of the **PROGRAMMER-SPECIFIC INFORMATION** section and the information at :doc:`/contrib_howtos/laptops_and_ec`.
 
 One-time programmable (OTP) memory and unique IDs
 
@@ -1369,14 +1769,12 @@ Please see the individual files.
 AUTHORS
 -------
 
-Andrew Morgan, Anastasia Klimchuk, Carl-Daniel Hailfinger, Claus Gindhart, David Borg, David Hendricks, Dominik Geyer,
-Edward O'Callaghan, Eric Biederman, Giampiero Giancipoli, Helge Wagner, Idwer Vollering, Joe Bao, Joerg Fischer,
-Joshua Roys, Kyösti Mälkki, Luc Verhaegen, Li-Ta Lo, Mark Marshall, Markus Boas, Mattias Mattsson, Michael Karcher,
-Nikolay Petukhov, Patrick Georgi, Peter Lemenkov, Peter Stuge, Reinder E.N. de Haan, Ronald G. Minnich, Ronald Hoogenboom,
-Sean Nelson, Stefan Reinauer, Stefan Tauner, Stefan Wildemann, Stephan Guilloux, Steven James, Urja Rannikko, Uwe Hermann,
-Wang Qingpei, Yinghai Lu and others, please see the **flashrom** git history for details.
+More than 350 authors have contributed to Flashrom over its life. Each individual
+is credited in the `hall of fame <https://flashrom.org/about_flashrom/hall_of_fame.html>`_,
+or author metadata can be found in the git history.
 
 All still active authors can be reached via `the mailing list <flashrom\@flashrom.org>`_.
 
-This manual page was written by `Uwe Hermann <uwe\@hermann-uwe.de>`_, Carl-Daniel Hailfinger, Stefan Tauner and others.
-It is licensed under the terms of the GNU GPL (version 2 or later).
+This manual page was written by `Uwe Hermann <uwe\@hermann-uwe.de>`_,
+Carl-Daniel Hailfinger, Stefan Tauner and others.  It is licensed under the
+terms of the GNU GPL (version 2 or later).

@@ -2,27 +2,19 @@
  * This file is part of the flashrom project.
  * It handles everything related to status registers of the JEDEC family 25.
  *
- * Copyright (C) 2007, 2008, 2009, 2010 Carl-Daniel Hailfinger
- * Copyright (C) 2008 coresystems GmbH
- * Copyright (C) 2008 Ronald Hoogenboom <ronald@zonnet.nl>
- * Copyright (C) 2012 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2007, 2008, 2009, 2010 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2008 coresystems GmbH
+ * SPDX-FileCopyrightText: 2008 Ronald Hoogenboom <ronald@zonnet.nl>
+ * SPDX-FileCopyrightText: 2012 Stefan Tauner
  */
 
 #include <stdlib.h>
 
-#include "flash.h"
 #include "chipdrivers.h"
 #include "programmer.h"
 #include "spi.h"
+#include "log.h"
 
 /* === Generic functions === */
 
@@ -310,7 +302,7 @@ static int spi_disable_blockprotect_generic(struct flashctx *flash, uint8_t bp_m
 	}
 
 	/* Restore status register content upon exit in finalize_flash_access(). */
-	uint8_t *data = calloc(sizeof(uint8_t), 1);
+	uint8_t *data = calloc(1, sizeof(uint8_t));
 	if (!data) {
 		msg_cerr("Out of memory!\n");
 		return 1;
@@ -963,6 +955,30 @@ static int spi_prettyprint_status_register_bp2_ep_srwd(struct flashctx *flash)
 		 (status & (1 << 5)) ? "" : "not ");
 	spi_prettyprint_status_register_bp(status, 2);
 	spi_prettyprint_status_register_welwip(status);
+
+	return 0;
+}
+
+/* Used by Spansion S25FL-S chips with second status register. The
+   data sheet names the register as Configuration Register 1. However,
+   the op-codes to access it, read = 0x35, maps to JEDEC_RDSR2. Hence
+   this code uses _sr2. */
+static int spi_prettyprint_status_register_bp2_ep_srwd_sr2(struct flashctx *flash)
+{
+	uint8_t status;
+
+	spi_prettyprint_status_register_bp2_ep_srwd(flash);
+
+	int ret = spi_read_register(flash, STATUS2, &status);
+	if (ret)
+		return ret;
+
+	msg_cdbg("Chip status register 2 is 0x%02x.\n", status);
+	msg_cdbg("Chip status register 2: Top/Bottom (TB) is %s\n", (status & (1 << 5)) ? "bottom" : "top");
+	msg_cdbg("Chip status register 2: BPNV is %s\n", (status & (1 << 3)) ? "volatitle" : "non-volatile");
+	msg_cdbg("Chip status register 2: QUAD is %s\n", (status & (1 << 1)) ? "Quad" : "dual or serial");
+	msg_cdbg("Chip status register 2: freeze is %s\n", (status & (1 << 0)) ? "locked" : "unlocked");
+
 	return 0;
 }
 
@@ -1060,6 +1076,7 @@ printlockfunc_t *lookup_printlock_func_ptr(struct flashctx *flash)
 		case SPI_PRETTYPRINT_STATUS_REGISTER_BP1_SRWD: return &spi_prettyprint_status_register_bp1_srwd;
 		case SPI_PRETTYPRINT_STATUS_REGISTER_BP2_BPL: return &spi_prettyprint_status_register_bp2_bpl;
 		case SPI_PRETTYPRINT_STATUS_REGISTER_BP2_EP_SRWD: return &spi_prettyprint_status_register_bp2_ep_srwd;
+		case SPI_PRETTYPRINT_STATUS_REGISTER_BP2_EP_SRWD_SR2: return &spi_prettyprint_status_register_bp2_ep_srwd_sr2;
 		case SPI_PRETTYPRINT_STATUS_REGISTER_BP2_SRWD: return &spi_prettyprint_status_register_bp2_srwd;
 		case SPI_PRETTYPRINT_STATUS_REGISTER_BP2_TB_BPL: return &spi_prettyprint_status_register_bp2_tb_bpl;
 		case SPI_PRETTYPRINT_STATUS_REGISTER_SRWD_SEC_TB_BP2_WELWIP: return &spi_prettyprint_status_register_srwd_sec_tb_bp2_welwip;

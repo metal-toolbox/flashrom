@@ -1,21 +1,10 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2005-2008 coresystems GmbH
- * (Written by Stefan Reinauer <stepan@coresystems.de> for coresystems GmbH)
- * Copyright (C) 2011-2013 Stefan Tauner
- * Copyright (C) 2016 secunet Security Networks AG
- * (Written by Nico Huber <nico.huber@secunet.com> for secunet)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2005-2008 coresystems GmbH (Written by Stefan Reinauer <stepan@coresystems.de> for coresystems GmbH)
+ * SPDX-FileCopyrightText: 2011-2013 Stefan Tauner
+ * SPDX-FileCopyrightText: 2016 secunet Security Networks AG (Written by Nico Huber <nico.huber@secunet.com> for secunet)
  */
 
 #ifndef __LAYOUT_H__
@@ -37,6 +26,11 @@ typedef uint32_t chipsize_t; /* Able to store the number of bytes of any support
 
 struct flash_region {
 	char *name;
+	/*
+	 * Note that because start and end are chipoff_t, end is an inclusive upper
+	 * bound: the length of a region is (end - start + 1) bytes and it is
+	 * impossible to represent a region with zero length.
+	 */
 	chipoff_t start;
 	chipoff_t end;
 	bool read_prot;
@@ -52,6 +46,11 @@ struct romentry {
 	struct flash_region region;
 };
 
+struct protected_ranges {
+	int count;
+	struct flash_region *ranges;
+};
+
 struct flashrom_layout;
 
 struct layout_include_args;
@@ -64,6 +63,7 @@ int layout_from_file(struct flashrom_layout **, const char *name);
 
 int register_include_arg(struct layout_include_args **, const char *arg);
 int process_include_args(struct flashrom_layout *, const struct layout_include_args *);
+int check_include_args_filename(const struct layout_include_args *);
 void cleanup_include_args(struct layout_include_args **);
 
 const struct romentry *layout_next_included_region(const struct flashrom_layout *, chipoff_t);
@@ -74,5 +74,11 @@ void prepare_layout_for_extraction(struct flashrom_flashctx *);
 int layout_sanity_checks(const struct flashrom_flashctx *);
 int check_for_unwritable_regions(const struct flashrom_flashctx *flash, unsigned int start, unsigned int len);
 void get_flash_region(const struct flashrom_flashctx *flash, int addr, struct flash_region *region);
+/*
+ * Return chipset-level protections.
+ * ranges parameter has to be freed by the caller with release_protected_ranges
+ */
+void get_protected_ranges(const struct flashrom_flashctx *flash, struct protected_ranges *ranges);
+void release_protected_ranges(const struct flashrom_flashctx *flash, struct protected_ranges *ranges);
 
 #endif /* !__LAYOUT_H__ */

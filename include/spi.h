@@ -1,20 +1,14 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2007, 2008 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2007, 2008 Carl-Daniel Hailfinger
  */
 
 #ifndef __SPI_H__
 #define __SPI_H__ 1
+
+#include "flash.h"
 
 /*
  * Contains the generic SPI headers
@@ -227,6 +221,9 @@
    From ANY mode (3-bytes or 4-bytes) it works with 4-byte address */
 #define JEDEC_BYTE_PROGRAM_4BA	0x12
 
+/* One of possible Die Select commands */
+#define WINBOND_SW_DIE_SELECT_C2    0xC2
+
 /* Error codes */
 #define SPI_GENERIC_ERROR	-1
 #define SPI_INVALID_OPCODE	-2
@@ -235,6 +232,23 @@
 #define SPI_FLASHROM_BUG	-5
 #define SPI_PROGRAMMER_ERROR	-6
 
+struct spi_command {
+	unsigned int writecnt;
+	unsigned int readcnt;
+	const unsigned char *writearr;
+	unsigned char *readarr;
+};
+#define NULL_SPI_CMD { 0, 0, NULL, NULL, }
+int spi_send_command(const struct flashctx *flash, unsigned int writecnt, unsigned int readcnt, const unsigned char *writearr, unsigned char *readarr);
+int spi_send_multicommand(const struct flashctx *flash, struct spi_command *cmds);
+
 void clear_spi_id_cache(void);
+
+int spi_aai_write(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len);
+int spi_chip_write_256(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len);
+int spi_chip_read(struct flashctx *flash, uint8_t *buf, unsigned int start, int unsigned len);
+bool spi_probe_opcode(const struct flashctx *flash, uint8_t opcode);
+int spi_dieselect_c2(struct flashctx *flash, unsigned int die_num);
+int spi_poll_wip_multidie(struct flashctx *const flash, unsigned int poll_delay);
 
 #endif		/* !__SPI_H__ */

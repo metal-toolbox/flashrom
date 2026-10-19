@@ -1,23 +1,14 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>
- * Copyright (C) 2009 Carl-Daniel Hailfinger
- * Copyright (C) 2011-2013 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2009 Uwe Hermann <uwe@hermann-uwe.de>
+ * SPDX-FileCopyrightText: 2009 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2011-2013 Stefan Tauner
  */
 
 #include <stdio.h>
-#include <string.h>
+#include "platform/string.h"
 #include <stdlib.h>
 #include <stddef.h>
 #if HAVE_UTSNAME == 1
@@ -31,6 +22,8 @@
 
 #include "flash.h"
 #include "programmer.h"
+#include "helpers.h"
+#include "log.h"
 
 static const char *test_state_to_text(enum test_state test_state)
 {
@@ -42,6 +35,28 @@ static const char *test_state_to_text(enum test_state test_state)
 	case NT:
 	default: return "Untested";
 	}
+}
+
+/*
+ * Print 'tok' and the following tokens that fit on the current line, stopping
+ * before the first one long enough (>= mintoklen) to deserve its own line.
+ * '*next' receives that token (NULL when exhausted). Returns the line length.
+ */
+static int print_wrapped_tokens(char *tok, char **save, const char *delim, int mintoklen, char **next)
+{
+	msg_ginfo("%s", tok);
+	int curlen = strlen(tok);
+	while ((tok = strtok_r(NULL, delim, save)) != NULL) {
+		msg_ginfo("%s", delim);
+		curlen++;
+		int toklen = strlen(tok);
+		if (toklen >= mintoklen)
+			break;
+		msg_ginfo("%s", tok);
+		curlen += toklen;
+	}
+	*next = tok;
+	return curlen;
 }
 
 static int print_supported_chips(void)
@@ -122,7 +137,7 @@ static int print_supported_chips(void)
 	for (i = strlen("Device"); i < maxchiplen; i++)
 		msg_ginfo(" ");
 
-	msg_ginfo("Test");
+	msg_ginfo("Test ");
 	for (i = 0; i < border; i++)
 		msg_ginfo(" ");
 	msg_ginfo("Known");
@@ -140,7 +155,7 @@ static int print_supported_chips(void)
 
 	for (i = 0; i < maxvendorlen + maxchiplen; i++)
 		msg_ginfo(" ");
-	msg_ginfo("OK  ");
+	msg_ginfo("OK   ");
 	for (i = 0; i < border; i++)
 		msg_ginfo(" ");
 	msg_ginfo("Broken");
@@ -151,7 +166,7 @@ static int print_supported_chips(void)
 		msg_ginfo(" ");
 	msg_gdbg("range [V]");
 	msg_ginfo("\n\n");
-	msg_ginfo("(P = PROBE, R = READ, E = ERASE, W = WRITE, - = N/A)\n\n");
+	msg_ginfo("(P = PROBE, R = READ, E = ERASE, W = WRITE, B = block-protect, - = N/A)\n\n");
 
 	for (chip = flashchips; chip->name != NULL; chip++) {
 		/* Don't print generic entries. */
@@ -178,17 +193,7 @@ static int print_supported_chips(void)
 		strcpy(ven, chip->vendor);
 
 		tmpven = strtok_r(ven, delim, &tmpven_save);
-		msg_ginfo("%s", tmpven);
-		curvenlen = strlen(tmpven);
-		while ((tmpven = strtok_r(NULL, delim, &tmpven_save)) != NULL) {
-			msg_ginfo("%s", delim);
-			curvenlen++;
-			tmpvenlen = strlen(tmpven);
-			if (tmpvenlen >= mintoklen)
-				break; /* big enough to be on its own line */
-			msg_ginfo("%s", tmpven);
-			curvenlen += tmpvenlen;
-		}
+		curvenlen = print_wrapped_tokens(tmpven, &tmpven_save, delim, mintoklen, &tmpven);
 
 		for (i = curvenlen; i < maxvendorlen; i++)
 			msg_ginfo(" ");
@@ -203,17 +208,7 @@ static int print_supported_chips(void)
 		strcpy(dev, chip->name);
 
 		tmpdev = strtok_r(dev, delim, &tmpdev_save);
-		msg_ginfo("%s", tmpdev);
-		curdevlen = strlen(tmpdev);
-		while ((tmpdev = strtok_r(NULL, delim, &tmpdev_save)) != NULL) {
-			msg_ginfo("%s", delim);
-			curdevlen++;
-			tmpdevlen = strlen(tmpdev);
-			if (tmpdevlen >= mintoklen)
-				break; /* big enough to be on its own line */
-			msg_ginfo("%s", tmpdev);
-			curdevlen += tmpdevlen;
-		}
+		curdevlen = print_wrapped_tokens(tmpdev, &tmpdev_save, delim, mintoklen, &tmpdev);
 
 		for (i = curdevlen; i < maxchiplen; i++)
 			msg_ginfo(" ");
@@ -242,6 +237,12 @@ static int print_supported_chips(void)
 			msg_ginfo("-");
 		else
 			msg_ginfo(" ");
+		if (chip->tested.wp == OK)
+			msg_ginfo("B");
+		else if (chip->tested.wp == NA)
+			msg_ginfo("-");
+		else
+			msg_ginfo(" ");
 		for (i = 0; i < border; i++)
 			msg_ginfo(" ");
 
@@ -259,6 +260,10 @@ static int print_supported_chips(void)
 			msg_ginfo(" ");
 		if (chip->tested.write == BAD)
 			msg_ginfo("W");
+		else
+			msg_ginfo(" ");
+		if (chip->tested.wp == BAD)
+			msg_ginfo("B");
 		else
 			msg_ginfo(" ");
 		for (i = 0; i < border + 1; i++)
@@ -290,39 +295,16 @@ static int print_supported_chips(void)
 		/* print surplus vendor and device name tokens */
 		while (tmpven != NULL || tmpdev != NULL) {
 			msg_ginfo("\n");
-			if (tmpven != NULL){
-				msg_ginfo("%s", tmpven);
-				curvenlen = strlen(tmpven);
-				while ((tmpven = strtok_r(NULL, delim, &tmpven_save)) != NULL) {
-					msg_ginfo("%s", delim);
-					curvenlen++;
-					tmpvenlen = strlen(tmpven);
-					/* big enough to be on its own line */
-					if (tmpvenlen >= mintoklen)
-						break;
-					msg_ginfo("%s", tmpven);
-					curvenlen += tmpvenlen;
-				}
-			} else
+			if (tmpven != NULL)
+				curvenlen = print_wrapped_tokens(tmpven, &tmpven_save, delim, mintoklen, &tmpven);
+			else
 				curvenlen = 0;
 
 			for (i = curvenlen; i < maxvendorlen; i++)
 				msg_ginfo(" ");
 
-			if (tmpdev != NULL){
-				msg_ginfo("%s", tmpdev);
-				curdevlen = strlen(tmpdev);
-				while ((tmpdev = strtok_r(NULL, delim, &tmpdev_save)) != NULL) {
-					msg_ginfo("%s", delim);
-					curdevlen++;
-					tmpdevlen = strlen(tmpdev);
-					/* big enough to be on its own line */
-					if (tmpdevlen >= mintoklen)
-						break;
-					msg_ginfo("%s", tmpdev);
-					curdevlen += tmpdevlen;
-				}
-			}
+			if (tmpdev != NULL)
+				curdevlen = print_wrapped_tokens(tmpdev, &tmpdev_save, delim, mintoklen, &tmpdev);
 		}
 		msg_ginfo("\n");
 		free(ven);
@@ -444,7 +426,8 @@ static void print_supported_boards_helper(const struct board_info *boards,
 }
 #endif
 
-static void print_supported_devs(const struct programmer_entry *const prog, const char *const type)
+static void print_supported_devs(const struct programmer_entry *const prog, const char *const type,
+				int* num_devs)
 {
 	const struct dev_entry *const devs = prog->devs.dev;
 	msg_ginfo("\nSupported %s devices for the %s programmer:\n", type, prog->name);
@@ -480,12 +463,17 @@ static void print_supported_devs(const struct programmer_entry *const prog, cons
 
 		msg_pinfo(" %04x:%04x  %s\n", devs[i].vendor_id, devs[i].device_id,
 			  test_state_to_text(devs[i].status));
+		if (devs[i].status == OK || devs[i].status == NT || devs[i].status == DEP)
+			*num_devs += 1;
 	}
 }
 
 int print_supported(void)
 {
 	unsigned int i;
+	int num_pci_devs = 0;
+	int num_usb_devs = 0;
+
 	if (print_supported_chips())
 		return 1;
 
@@ -504,10 +492,10 @@ int print_supported(void)
 		const struct programmer_entry *const prog = programmer_table[i];
 		switch (prog->type) {
 		case USB:
-			print_supported_devs(prog, "USB");
+			print_supported_devs(prog, "USB", &num_usb_devs);
 			break;
 		case PCI:
-			print_supported_devs(prog, "PCI");
+			print_supported_devs(prog, "PCI", &num_pci_devs);
 			break;
 		case OTHER:
 			if (prog->devs.note != NULL) {
@@ -521,6 +509,10 @@ int print_supported(void)
 			break;
 		}
 	}
+
+	msg_ginfo("\nSupported USB devices, total %d\nSupported PCI devices, total %d\n",
+			num_usb_devs, num_pci_devs);
+
 	return 0;
 }
 

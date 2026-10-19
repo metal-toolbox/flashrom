@@ -1,30 +1,24 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2007, 2008, 2009, 2010, 2011 Carl-Daniel Hailfinger
- * Copyright (C) 2008 coresystems GmbH
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2007, 2008, 2009, 2010, 2011 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2008 coresystems GmbH
  */
 
 /*
  * Contains the generic SPI framework
  */
 
+#include "spi.h"
+
 #include <strings.h>
-#include <string.h>
-#include "flash.h"
+#include "platform/string.h"
 #include "flashchips.h"
 #include "chipdrivers.h"
 #include "programmer.h"
-#include "spi.h"
+#include "helpers.h"
+#include "log.h"
 
 static int default_spi_send_command(const struct flashctx *flash, unsigned int writecnt,
 			     unsigned int readcnt,
@@ -104,8 +98,6 @@ int spi_chip_read(struct flashctx *flash, uint8_t *buf, unsigned int start,
 {
 	int ret;
 	size_t to_read;
-	size_t start_address = start;
-	size_t end_address = len - start;
 	for (; len; len -= to_read, buf += to_read, start += to_read) {
 		/* Do not cross 16MiB boundaries in a single transfer.
 		   This helps with
@@ -115,7 +107,6 @@ int spi_chip_read(struct flashctx *flash, uint8_t *buf, unsigned int start,
 		ret = flash->mst->spi.read(flash, buf, start, to_read);
 		if (ret)
 			return ret;
-		update_progress(flash, FLASHROM_PROGRESS_READ, start - start_address + to_read, end_address);
 	}
 	return 0;
 }
@@ -150,12 +141,8 @@ int register_spi_master(const struct spi_master *mst, void *data)
 {
 	struct registered_master rmst = {0};
 
-	if (mst->shutdown) {
-		if (register_shutdown(mst->shutdown, data)) {
-			mst->shutdown(data); /* cleanup */
-			return 1;
-		}
-	}
+	if (register_master_shutdown(mst->shutdown, data))
+		return 1;
 
 	if (!mst->write_256 || !mst->read || (!mst->command && !mst->multicommand)) {
 		msg_perr("%s called with incomplete master definition. "

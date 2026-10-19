@@ -1,16 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright 2022 Google LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2022 Google LLC
  */
 
 #include "flash.h"
@@ -65,6 +57,9 @@ void selfcheck_flashchips_table(void **state)
 		assert_table(chip->vendor, "chip vendor is null", i, chip->name);
 		assert_table(chip->name, "chip name is null", i, chip->name);
 		assert_table(chip->bustype != BUS_NONE, "chip bustype is BUS_NONE", i, chip->name);
+		assert_table((chip->die_size != 0 && chip->die_select != NO_DIESELECT_FUNC) ||
+				(chip->die_size == 0 && chip->die_select == NO_DIESELECT_FUNC),
+				"die_size and die_select should be both zero or defined", i, chip->name);
 	}
 }
 

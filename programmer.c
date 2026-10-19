@@ -1,26 +1,32 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009,2010,2011 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2009,2010,2011 Carl-Daniel Hailfinger
  */
 
 #include "flash.h"
 #include "programmer.h"
+#include "log.h"
 
 /* The limit of 4 is totally arbitrary. */
 #define MASTERS_MAX 4
 struct registered_master registered_masters[MASTERS_MAX];
 int registered_master_count = 0;
+
+/*
+ * Register a master's shutdown callback, if it has one. On success the
+ * callback will run at flashrom shutdown. Returns non-zero if registration
+ * failed, having already invoked the callback once for cleanup.
+ */
+int register_master_shutdown(int (*shutdown)(void *data), void *data)
+{
+	if (shutdown && register_shutdown(shutdown, data)) {
+		shutdown(data); /* cleanup */
+		return 1;
+	}
+	return 0;
+}
 
 /* This function copies the struct registered_master parameter. */
 int register_master(const struct registered_master *mst)

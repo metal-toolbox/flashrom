@@ -1,17 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
  */
 
 /*
@@ -22,9 +13,11 @@
  *  - Order number: 290658-004
  */
 
-#include <stdbool.h>
 #include "flash.h"
+#include "parallel.h"
 #include "chipdrivers.h"
+#include "log.h"
+#include <stdbool.h>
 
 void print_status_82802ab(uint8_t status)
 {
@@ -135,7 +128,7 @@ int write_82802ab(struct flashctx *flash, const uint8_t *src, unsigned int start
 		chip_writeb(flash, 0x40, dst);
 		chip_writeb(flash, *src++, dst++);
 		wait_82802ab(flash);
-		update_progress(flash, FLASHROM_PROGRESS_WRITE, i + 1, len);
+		update_progress(flash, FLASHROM_PROGRESS_WRITE, 1);
 	}
 
 	/* FIXME: Ignore errors for now. */

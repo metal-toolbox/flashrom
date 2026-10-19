@@ -1,22 +1,17 @@
 # This file is part of the flashrom project.
 #
-# Copyright 2020 Google LLC
-#
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; version 2 of the License.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-FileCopyrightText: 2020 Google LLC
 
 test_srcs = files(
   'io_mock.c',
   'tests.c',
   'libusb_wraps.c',
   'helpers.c',
+  'i2c_helper.c',
   'flashrom.c',
+  'libflashrom.c',
+  'probe_spi.c',
   'spi25.c',
   'lifecycle.c',
   'layout.c',
@@ -25,6 +20,7 @@ test_srcs = files(
   'selfcheck.c',
   'io_real.c',
   'erase_func_algo.c',
+  'udelay.c',
 )
 
 if not programmer.get('dummy').get('active')
@@ -47,6 +43,8 @@ mocks = [
   '-Wl,--wrap=open',
   '-Wl,--wrap=open64',
   '-Wl,--wrap=__open64_2',
+  '-Wl,--wrap=fcntl',
+  '-Wl,--wrap=fcntl64',
   '-Wl,--wrap=ioctl',
   '-Wl,--wrap=read',
   '-Wl,--wrap=write',
@@ -81,6 +79,8 @@ mocks = [
   '-Wl,--wrap=INW',
   '-Wl,--wrap=OUTL',
   '-Wl,--wrap=INL',
+  '-Wl,--wrap=tcgetattr',
+  '-Wl,--wrap=tcsetattr',
   '-Wl,--wrap=usb_dev_get_by_vid_pid_number',
   '-Wl,--wrap=libusb_init',
   '-Wl,--wrap=libusb_set_debug',
@@ -97,11 +97,13 @@ mocks = [
   '-Wl,--wrap=libusb_get_device_address',
   '-Wl,--wrap=libusb_get_device_descriptor',
   '-Wl,--wrap=libusb_get_config_descriptor',
+  '-Wl,--wrap=libusb_get_active_config_descriptor',
   '-Wl,--wrap=libusb_free_config_descriptor',
   '-Wl,--wrap=libusb_get_configuration',
   '-Wl,--wrap=libusb_set_configuration',
   '-Wl,--wrap=libusb_claim_interface',
   '-Wl,--wrap=libusb_control_transfer',
+  '-Wl,--wrap=libusb_bulk_transfer',
   '-Wl,--wrap=libusb_release_interface',
   '-Wl,--wrap=libusb_ref_device',
   '-Wl,--wrap=libusb_unref_device',
@@ -123,6 +125,7 @@ flashrom_tests = executable('flashrom_unit_tests',
     '-ffunction-sections',
     '-fdata-sections',
     '-U_FORTIFY_SOURCE',
+    '-DFLASHROM_TEST',
   ],
   export_dynamic : true,
   link_args : mocks + link_args,
@@ -133,3 +136,18 @@ test('cmocka test flashrom', flashrom_tests)
 if get_option('llvm_cov').enabled()
   run_target('llvm-cov-tests', command : ['../scripts/llvm-cov', flashrom_tests])
 endif
+
+# Creating a second test executable which runs tests as if it is an external
+# flashrom client using libflashrom via public API.
+
+client_test_srcs = files(
+  'external_client.c',
+  'client_tests.c',
+  )
+
+flashrom_client_tests = executable('flashrom_client_tests',
+  client_test_srcs,
+  export_dynamic : true,
+  dependencies : [cmocka_dep, libflashrom_test_dep],
+)
+test('flashrom client tests', flashrom_client_tests)

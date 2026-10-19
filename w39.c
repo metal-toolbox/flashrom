@@ -1,22 +1,15 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2008 coresystems GmbH
- * Copyright (C) 2010 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2008 coresystems GmbH
+ * SPDX-FileCopyrightText: 2010 Carl-Daniel Hailfinger
  */
 
 #include "flash.h"
+#include "parallel.h"
 #include "chipdrivers.h"
+#include "log.h"
 
 static uint8_t w39_idmode_readb(struct flashctx *flash, unsigned int offset)
 {

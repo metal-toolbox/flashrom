@@ -1,24 +1,17 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009-2010 Carl-Daniel Hailfinger
- * Copyright (C) 2013 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2009-2010 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2013 Stefan Tauner
  */
 
+#include "helpers.h"
+
+#include "log.h"
 #include <ctype.h>
 #include <stdlib.h>
-#include <string.h>
-#include "flash.h"
+#include "platform/string.h"
 
 /* Returns the minimum number of bits needed to represent the given address.
  * FIXME: use mind-blowing implementation. */
@@ -83,49 +76,54 @@ void reverse_bytes(uint8_t *dst, const uint8_t *src, size_t length)
 		dst[i] = reverse_byte(src[i]);
 }
 
-/* FIXME: Find a better solution for MinGW. Maybe wrap strtok_s (C11) if it becomes available */
-#ifdef __MINGW32__
-char* strtok_r(char *str, const char *delim, char **nextp)
+/* Parse a voltage= parameter value into millivolts. Accepts an optional
+ * decimal point ("," or "."), and an optional "V", "mV" or "millivolt" unit.
+ * Might be useful for various USB devices. Returns -1 on error. */
+int parse_voltage(char *voltage)
 {
-	if (str == NULL)
-		str = *nextp;
+	char *tmp = NULL;
+	int i;
+	int millivolt = 0, fraction = 0;
 
-	str += strspn(str, delim); /* Skip leading delimiters */
-	if (*str == '\0')
-		return NULL;
-
-	char *ret = str;
-	str += strcspn(str, delim); /* Find end of token */
-	if (*str != '\0')
-		*str++ = '\0';
-
-	*nextp = str;
-	return ret;
-}
-
-/* strndup is a POSIX function not present in MinGW */
-char *strndup(const char *src, size_t maxlen)
-{
-	char *retbuf;
-	size_t len;
-	for (len = 0; len < maxlen; len++)
-		if (src[len] == '\0')
-			break;
-	if ((retbuf = malloc(1 + len)) != NULL) {
-		memcpy(retbuf, src, len);
-		retbuf[len] = '\0';
+	if (!voltage || !strlen(voltage)) {
+		msg_perr("Empty voltage= specified.\n");
+		return -1;
 	}
-	return retbuf;
-}
-#endif
+	millivolt = (int)strtol(voltage, &tmp, 0);
+	voltage = tmp;
+	/* Handle "," and "." as decimal point. Everything after it is assumed
+	 * to be in decimal notation.
+	 */
+	if ((*voltage == '.') || (*voltage == ',')) {
+		voltage++;
+		for (i = 0; i < 3; i++) {
+			fraction *= 10;
+			/* Don't advance if the current character is invalid,
+			 * but continue multiplying.
+			 */
+			if ((*voltage < '0') || (*voltage > '9'))
+				continue;
+			fraction += *voltage - '0';
+			voltage++;
+		}
+		/* Throw away remaining digits. */
+		voltage += strspn(voltage, "0123456789");
+	}
+	/* The remaining string must be empty or "mV" or "V". */
+	tolower_string(voltage);
 
-/* There is no strnlen in DJGPP */
-#if defined(__DJGPP__) || (!defined(__LIBPAYLOAD__) && !defined(HAVE_STRNLEN))
-size_t strnlen(const char *str, size_t n)
-{
-	size_t i;
-	for (i = 0; i < n && str[i] != '\0'; i++)
-		;
-	return i;
+	/* No unit or "V". */
+	if ((*voltage == '\0') || !strcmp(voltage, "v")) {
+		millivolt *= 1000;
+		millivolt += fraction;
+	} else if (!strcmp(voltage, "mv") ||
+		   !strcmp(voltage, "milliv")) {
+		/* No adjustment. fraction is discarded. */
+	} else {
+		/* Garbage at the end of the string. */
+		msg_perr("Garbage voltage= specified.\n");
+		return -1;
+	}
+	return millivolt;
 }
-#endif
+
