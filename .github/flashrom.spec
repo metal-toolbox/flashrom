@@ -10,9 +10,7 @@ Source0:	https://github.com/metal-toolbox/%{name}/archive/refs/tags/v%{version}.
 
 BuildRequires:	gcc
 BuildRequires:	pciutils-devel
-BuildRequires:	libusb-devel
-# Used for new programmers (libusb0 will eventually be removed)
-BuildRequires:	libusbx-devel
+BuildRequires:	libusb1-devel
 BuildRequires:	systemd
 BuildRequires:	systemd-devel
 BuildRequires:	zlib-devel
@@ -34,7 +32,7 @@ other programmer devices.
 %autosetup -p1 -n %{name}-%{version}
 
 %build
-CFLAGS=-g %{__make} PREFIX=/usr CONFIG_INTERNAL=yes %{?_smp_mflags}
+CFLAGS="%{optflags}" LDFLAGS="%{build_ldflags}" %{__make} PREFIX=/usr CONFIG_INTERNAL=yes WARNERROR=no %{?_smp_mflags}
 
 %install
 %{__make} PREFIX=/usr DESTDIR=$RPM_BUILD_ROOT install

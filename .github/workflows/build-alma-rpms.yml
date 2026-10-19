@@ -8,20 +8,20 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: almalinux:9-minimal
+    container: almalinux:10-minimal
     name: Build Alma RPMs
     steps:
       - name: Install tools needed for actions
         run: microdnf install -y tar gzip nodejs
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Build RPMs
         run: .github/build-alma-rpms.sh
 
       - name: Create Release
-        uses: "marvinpinto/action-automatic-releases@latest"
+        uses: "marvinpinto/action-automatic-releases@v1.2.1"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
           prerelease: false
