@@ -1,15 +1,7 @@
 /*
  * This file is part of the flashrom project.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "programmer.h"
@@ -22,6 +14,10 @@ const struct programmer_entry *const programmer_table[] = {
 
 #if CONFIG_DUMMY == 1
     &programmer_dummy,
+#endif
+
+#if CONFIG_FAULT == 1
+    &programmer_fault,
 #endif
 
 #if CONFIG_NIC3COM == 1
@@ -178,6 +174,14 @@ const struct programmer_entry *const programmer_table[] = {
 
 #if CONFIG_DIRTYJTAG_SPI == 1
     &programmer_dirtyjtag_spi,
+#endif
+
+#if CONFIG_SPIDRIVER == 1
+    &programmer_spidriver,
+#endif
+
+#if CONFIG_NV_SMA_SPI == 1
+    &programmer_nv_sma_spi,
 #endif
 };
 

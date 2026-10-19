@@ -1,16 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright 2020 Google LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2020 Google LLC
  */
 
 #ifndef TESTS_H
@@ -27,14 +19,29 @@ void strcat_realloc_test_success(void **state);
 void tolower_string_test_success(void **state);
 void reverse_byte_test_success(void **state);
 void reverse_bytes_test_success(void **state);
+void parse_voltage_success(void **state);
+void parse_voltage_invalid(void **state);
+
+/* i2c_helper.c */
+void i2c_require_allow_brick_yes_test_success(void **state);
+void i2c_require_allow_brick_absent_test_success(void **state);
+void i2c_require_allow_brick_invalid_test_success(void **state);
 
 /* flashrom.c */
 void flashbuses_to_text_test_success(void **state);
 
+/* libflashrom.c */
+void flashrom_set_log_callback_test_success(void **state);
+void flashrom_set_log_callback_v2_test_success(void **state);
+void flashrom_set_log_level_test_success(void **state);
+void flashrom_supported_programmers_test_success(void **state);
+void probe_v2_error_code_propagation(void **state);
+void flashrom_layout_compare_test_success(void **state);
+
 /* spi25.c */
 void spi_write_enable_test_success(void **state);
 void spi_write_disable_test_success(void **state);
-void spi_read_chunked_test_success(void **state);
+void default_spi_read_test_success(void **state);
 void probe_spi_rdid_test_success(void **state);
 void probe_spi_rdid4_test_success(void **state);
 void probe_spi_rems_test_success(void **state);
@@ -44,15 +51,32 @@ void probe_spi_res3_test_success(void **state);
 void probe_spi_at25f_test_success(void **state);
 void probe_spi_st95_test_success(void **state); /* spi95.c */
 
+/* probe_spi.c */
+void probe_jedec_rdid3_fixed_chipname(void **state);
+void probe_jedec_rdid3_try_all_flashchips(void **state);
+void probe_jedec_rdid3_no_matches_found(void **state);
+void probe_jedec_res1_fixed_chipname(void **state);
+void probe_jedec_res1_try_all_flashchips(void **state);
+void probe_jedec_res1_no_matches_found(void **state);
+
 /* lifecycle.c */
 void dummy_basic_lifecycle_test_success(void **state);
 void dummy_probe_lifecycle_test_success(void **state);
+void dummy_probe_v2_one_match_for_W25Q128FV(void **state);
+void dummy_probe_v2_six_matches_for_MX25L6436(void **state);
+void dummy_probe_v2_sfdp_detection_for_MX25L6436(void **state);
+void dummy_probe_v2_no_matches_found(void **state);
 void dummy_probe_variable_size_test_success(void **state);
 void dummy_init_fails_unhandled_param_test_success(void **state);
 void dummy_init_success_invalid_param_test_success(void **state);
 void dummy_init_success_unhandled_param_test_success(void **state);
 void dummy_null_prog_param_test_success(void **state);
 void dummy_all_buses_test_success(void **state);
+void dummy_freq_param_init(void **state);
+void dummy_probe_and_read(void **state);
+void dummy_probe_and_write(void **state);
+void dummy_probe_and_erase(void **state);
+void dummy_probe_and_read_repeated(void **state);
 void nicrealtek_basic_lifecycle_test_success(void **state);
 void raiden_debug_basic_lifecycle_test_success(void **state);
 void raiden_debug_targetAP_basic_lifecycle_test_success(void **state);
@@ -70,6 +94,22 @@ void realtek_mst_basic_lifecycle_test_success(void **state);
 void realtek_mst_no_allow_brick_test_success(void **state);
 void ch341a_spi_basic_lifecycle_test_success(void **state);
 void ch341a_spi_probe_lifecycle_test_success(void **state);
+void ch341a_spi_fault_wrapped_basic_test_success(void **state);
+void ch341a_spi_fault_wrapped_probe_test_success(void **state);
+void ch347_spi_basic_lifecycle_test_success(void **state);
+void ch347_spi_probe_lifecycle_test_success(void **state);
+void ch347_spi_fault_wrapped_basic_test_success(void **state);
+void ch347_spi_fault_wrapped_probe_test_success(void **state);
+void spidriver_probe_lifecycle_test_success(void **state);
+void nv_sma_spi_basic_lifecycle_test_success(void **state);
+void fault_basic_lifecycle_test_success(void **state);
+void fault_init_missing_backend_test_success(void **state);
+void fault_init_self_wrap_test_success(void **state);
+void fault_init_unknown_backend_test_success(void **state);
+void fault_probe_lifecycle_test_success(void **state);
+void fault_probe_and_read_test_success(void **state);
+void fault_all_fault_params_test_success(void **state);
+void fault_deterministic_seed_test_success(void **state);
 
 /* layout.c */
 void included_regions_dont_overlap_test_success(void **state);
@@ -81,14 +121,23 @@ void layout_region_invalid_range_test_success(void **state);
 
 /* chip.c */
 void erase_chip_test_success(void **state);
+void erase_chip_with_progress(void **state);
 void erase_chip_with_dummyflasher_test_success(void **state);
+void erase_chip_dual_die_c2(void **state);
 void read_chip_test_success(void **state);
+void read_chip_with_progress(void **state);
 void read_chip_with_dummyflasher_test_success(void **state);
 void write_chip_test_success(void **state);
+void write_chip_with_progress(void **state);
 void write_chip_with_dummyflasher_test_success(void **state);
+void write_chip_feature_no_erase(void **state);
+void write_chip_feature_no_erase_with_progress(void **state);
 void write_nonaligned_region_with_dummyflasher_test_success(void **state);
 void verify_chip_test_success(void **state);
 void verify_chip_with_dummyflasher_test_success(void **state);
+void erase_chip_bad_status_test(void **state);
+void read_chip_bad_status_test(void **state);
+void write_chip_bad_status_test(void **state);
 
 /* chip_wp.c */
 void invalid_wp_range_dummyflasher_test_success(void **state);
@@ -98,6 +147,7 @@ void wp_init_from_status_dummyflasher_test_success(void **state);
 void full_chip_erase_with_wp_dummyflasher_test_success(void **state);
 void partial_chip_erase_with_wp_dummyflasher_test_success(void **state);
 void wp_get_register_values_and_masks(void **state);
+void fudan_fm25w128_wp_decode_test_success(void **state);
 
 /* selfcheck.c */
 void selfcheck_programmer_table(void **state);
@@ -107,7 +157,11 @@ void selfcheck_board_matches_table(void **state);
 
 /* erase_func_algo.c */
 struct CMUnitTest *get_erase_func_algo_tests(size_t *num_tests);
+struct CMUnitTest *get_erase_protected_region_algo_tests(size_t *num_tests);
 void erase_function_algo_test_success(void **state);
 void write_function_algo_test_success(void **state);
+
+/* udelay.c */
+void udelay_test_short(void **state);
 
 #endif /* TESTS_H */

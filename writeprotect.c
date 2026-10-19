@@ -1,30 +1,20 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2010 Google Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2010 Google Inc.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include "platform/string.h"
 
 #include "spi.h"
-#include "flash.h"
 #include "libflashrom.h"
 #include "chipdrivers.h"
 #include "writeprotect.h"
 #include "programmer.h"
+#include "log.h"
 
 /*
  * Allow specialisation in opaque masters, such as ichspi hwseq, to r/w to status registers.
@@ -242,6 +232,7 @@ static decode_range_func_t *lookup_decode_range_func_ptr(const struct flashchip 
 		case DECODE_RANGE_SPI25_64K_BLOCK: return &decode_range_spi25_64k_block;
 		case DECODE_RANGE_SPI25_BIT_CMP: return &decode_range_spi25_bit_cmp;
 		case DECODE_RANGE_SPI25_2X_BLOCK: return &decode_range_spi25_2x_block;
+		case DECODE_RANGE_SPI25_BP3_TO_1_16: return &decode_range_spi25_bp3_to_1_16;
 	/* default: total function, 0 indicates no decode range function set. */
 		case NO_DECODE_RANGE_FUNC: return NULL;
 	};
@@ -482,7 +473,7 @@ static int set_wp_mode(struct wp_bits *bits, const enum flashrom_wp_mode mode)
 
 	case FLASHROM_WP_MODE_HARDWARE:
 		if (!bits->srp_bit_present)
-			return FLASHROM_WP_ERR_CHIP_UNSUPPORTED;
+			return FLASHROM_WP_ERR_MODE_UNSUPPORTED;
 
 		bits->srl = 0;
 		bits->srp = 1;

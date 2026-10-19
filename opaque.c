@@ -1,16 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2011,2013,2014 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2011,2013,2014 Carl-Daniel Hailfinger
  */
 
 /*
@@ -25,6 +17,7 @@
 #include "flashchips.h"
 #include "chipdrivers.h"
 #include "programmer.h"
+#include "log.h"
 
 int probe_opaque(struct flashctx *flash)
 {
@@ -50,12 +43,8 @@ int register_opaque_master(const struct opaque_master *mst, void *data)
 {
 	struct registered_master rmst = {0};
 
-	if (mst->shutdown) {
-		if (register_shutdown(mst->shutdown, data)) {
-			mst->shutdown(data); /* cleanup */
-			return 1;
-		}
-	}
+	if (register_master_shutdown(mst->shutdown, data))
+		return 1;
 
 	if (!mst->probe || !mst->read || !mst->write || !mst->erase) {
 		msg_perr("%s called with incomplete master definition. "

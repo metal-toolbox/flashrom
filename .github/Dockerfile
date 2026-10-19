@@ -3,7 +3,8 @@ FROM almalinux:10-minimal AS base
 RUN microdnf update -y && microdnf install -y dnf epel-release almalinux-release-devel
 
 FROM base AS flashrom
-COPY build-alma-rpms.sh flashrom.spec .github/
+WORKDIR /src
+COPY . .
 RUN .github/build-alma-rpms.sh
 
 FROM base

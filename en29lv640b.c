@@ -1,22 +1,15 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2012 Rudolf Marek <r.marek@assembler.cz>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2012 Rudolf Marek <r.marek@assembler.cz>
  */
 
 #include "flash.h"
+#include "parallel.h"
 #include "chipdrivers.h"
+#include "log.h"
 
 /*
  * WARNING!
@@ -26,7 +19,7 @@
  * functions.
  */
 
-/* chunksize is 1 */
+/* chunksize is 2 */
 int write_en29lv640b(struct flashctx *flash, const uint8_t *src, unsigned int start, unsigned int len)
 {
 	unsigned int i;
@@ -48,7 +41,7 @@ int write_en29lv640b(struct flashctx *flash, const uint8_t *src, unsigned int st
 #endif
 		dst += 2;
 		src += 2;
-		update_progress(flash, FLASHROM_PROGRESS_WRITE, i + 2, len);
+		update_progress(flash, FLASHROM_PROGRESS_WRITE, 2);
 	}
 
 	/* FIXME: Ignore errors for now. */

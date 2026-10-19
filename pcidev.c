@@ -1,25 +1,19 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>
- * Copyright (C) 2010, 2011 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2009 Uwe Hermann <uwe@hermann-uwe.de>
+ * SPDX-FileCopyrightText: 2010, 2011 Carl-Daniel Hailfinger
  */
 
+#include "pcidev.h"
+
 #include <stdlib.h>
-#include <string.h>
+#include "platform/string.h"
+
 #include "flash.h"
 #include "programmer.h"
-#include "platform/pci.h"
+#include "log.h"
 
 struct pci_access *pacc;
 
@@ -298,7 +292,7 @@ struct pci_dev *pcidev_init(const struct programmer_cfg *cfg, const struct dev_e
 			/* FIXME: We should count all matching devices, not
 			 * just those with a valid BAR.
 			 */
-			if (pcidev_readbar(dev, bar) != 0) {
+			if (bar == PCIDEV_NO_BAR_ACCESS_NEEDED || pcidev_readbar(dev, bar) != 0) {
 				found_dev = dev;
 				found++;
 			}

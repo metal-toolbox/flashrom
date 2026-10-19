@@ -1,24 +1,17 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2011-2012 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2011-2012 Stefan Tauner
  */
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
-#include "flash.h"
+#include "platform/string.h"
 #include "spi.h"
 #include "chipdrivers.h"
+#include "helpers.h"
+#include "log.h"
 
 static int spi_sfdp_read_sfdp_chunk(struct flashctx *flash, uint32_t address, uint8_t *buf, int len)
 {
@@ -119,6 +112,20 @@ static int sfdp_add_uniform_eraser(struct flashchip *chip, uint8_t opcode, uint3
 		  " Please report this at flashrom@flashrom.org\n",
 		  __func__, i);
 	return 1;
+}
+
+static int compare_erasers(const void *aptr, const void *bptr)
+{
+	const struct block_eraser *a = aptr;
+	const struct block_eraser *b = bptr;
+
+	/* unused erasers, sort last */
+	if (a->block_erase == NO_BLOCK_ERASE_FUNC)
+		return 1;
+	if (b->block_erase == NO_BLOCK_ERASE_FUNC)
+		return -1;
+	/* sort by block size, ascending */
+	return ((int) a->eraseblocks[0].size) - ((int) b->eraseblocks[0].size);
 }
 
 static int sfdp_fill_flash(struct flashchip *chip, uint8_t *buf, uint16_t len)
@@ -247,6 +254,100 @@ static int sfdp_fill_flash(struct flashchip *chip, uint8_t *buf, uint16_t len)
 		sfdp_add_uniform_eraser(chip, tmp8, block_size);
 	}
 
+	/* Sort block erasers in ascending order by size; this is required
+	 * for erase logic, see erasure_layout.c */
+	qsort(chip->block_erasers, NUM_ERASEFUNCTIONS,
+		sizeof(chip->block_erasers[0]), compare_erasers);
+	for (j = 0; j < NUM_ERASEFUNCTIONS; j++) {
+		const struct block_eraser *eraser = &chip->block_erasers[j];
+		msg_cdbg2("  Sorted eraser #%u: %"PRId32" x %"PRId32" B\n",
+			j,
+			eraser->eraseblocks[0].count,
+			eraser->eraseblocks[0].size);
+	}
+
+done:
+	msg_cdbg("done.\n");
+	return 0;
+}
+
+static unsigned int bits_to_counter_delay(const uint8_t bits)
+{
+	unsigned int value = bits & 0xf;
+
+	switch ((bits & (0b11 << 4)) >> 4) {
+		case 0b00:
+			value *= 1;
+			break;
+		case 0b01:
+			value *= 16;
+			break;
+		case 0b10:
+			value *= 128;
+			break;
+		case 0b11:
+			value *= 1000;
+			break;
+	}
+
+	return value;
+}
+
+static int parse_rpmc_parameter_table(struct flashchip *const chip, const uint8_t *const buf, const uint16_t len)
+{
+	if (len != 2 * 4) {
+		msg_cdbg("Length of RPMC parameter table is wrong, skipping it\n");
+		return 1;
+	}
+
+	msg_cdbg("Parsing rpmc parameter table...\n");
+
+	// first dword
+	uint32_t first_dword =	((unsigned int)buf[(4 * 0) + 0]);
+	first_dword |=		((unsigned int)buf[(4 * 0) + 1]) << 8;
+	first_dword |=		((unsigned int)buf[(4 * 0) + 2]) << 16;
+	first_dword |=		((unsigned int)buf[(4 * 0) + 3]) << 24;
+
+	if ((first_dword & 0b1) != 0) {
+		// flash hardening is not supported
+		msg_cdbg("Flash Hardening not supported\n");
+		goto done;
+	}
+
+	chip->feature_bits |= FEATURE_FLASH_HARDENING;
+
+	chip->rpmc_ctx.busy_polling_method = (first_dword & (1 << 2)) >> 2;
+	msg_cspew("Busy polling method: %u\n", chip->rpmc_ctx.busy_polling_method);
+
+	chip->rpmc_ctx.num_counters = ((first_dword & (0xf << 4)) >> 4) + 1;
+	msg_cspew("Number of counters: %u\n", chip->rpmc_ctx.num_counters);
+
+	chip->rpmc_ctx.op1_opcode = (first_dword & (0xff << 8)) >> 8;
+	msg_cspew("OP1 opcode: 0x%02x\n", chip->rpmc_ctx.op1_opcode);
+
+	chip->rpmc_ctx.op2_opcode = (first_dword & (0xff << 16)) >> 16;
+	msg_cspew("OP2 opcode: 0x%02x\n", chip->rpmc_ctx.op2_opcode);
+
+	chip->rpmc_ctx.update_rate = 5 * (1 << ((first_dword & (0xf << 24)) >> 24));
+	msg_cspew("Update rate: %u seconds\n", chip->rpmc_ctx.update_rate);
+
+	// second dword
+	uint32_t second_dword =	((unsigned int)buf[(4 * 1) + 0]);
+	second_dword |=		((unsigned int)buf[(4 * 1) + 1]) << 8;
+	second_dword |=		((unsigned int)buf[(4 * 1) + 2]) << 16;
+	second_dword |=		((unsigned int)buf[(4 * 1) + 3]) << 24;
+
+	chip->rpmc_ctx.polling_delay_read_counter_us = bits_to_counter_delay(second_dword & 0xf);
+	msg_cspew("Read counter polling delay: %u us\n", chip->rpmc_ctx.polling_delay_read_counter_us);
+
+	chip->rpmc_ctx.polling_short_delay_write_counter_us = bits_to_counter_delay((second_dword >> 8) & 0xf);
+	msg_cspew("Write counter short polling delay: %u us\n",
+		  chip->rpmc_ctx.polling_short_delay_write_counter_us);
+
+	chip->rpmc_ctx.polling_long_delay_write_counter_us = bits_to_counter_delay((second_dword >> 16) & 0xf) * 1000;
+	msg_cspew("Write counter long polling delay: %u us\n",
+		  chip->rpmc_ctx.polling_long_delay_write_counter_us);
+
 done:
 	msg_cdbg("done.\n");
 	return 0;
@@ -359,23 +460,44 @@ int probe_spi_sfdp(struct flashctx *flash)
 		}
 		msg_cspew("\n");
 
-		if (i == 0) { /* Mandatory JEDEC SFDP parameter table */
-			if (hdrs[i].id != 0)
-				msg_cdbg("ID of the mandatory JEDEC SFDP "
-					 "parameter table is not 0 as demanded "
-					 "by JESD216 (warning only).\n");
-
-			if (hdrs[i].v_major != 0x01) {
+		if (i == 0) {
+			if (hdrs[i].id != 0) {
+				msg_cerr("ID of the mandatory JEDEC SFDP "
+					  "parameter table is not 0 as demanded "
+					  "by JESD216.\n");
+			} else if (hdrs[i].v_major != 0x01) {
 				msg_cdbg("The chip contains an unknown "
-					  "version of the JEDEC flash "
-					  "parameters table, skipping it.\n");
+					 "version of the JEDEC flash "
+					 "parameters table (Version: %u.%u), skipping it.\n",
+					 hdrs[i].v_major, hdrs[i].v_minor);
 			} else if (len != 4 * 4 && len < 9 * 4) {
 				msg_cdbg("Length of the mandatory JEDEC SFDP "
 					 "parameter table is wrong (%d B), "
 					 "skipping it.\n", len);
-			} else if (sfdp_fill_flash(flash->chip, tbuf, len) == 0)
+			} else if (sfdp_fill_flash(flash->chip, tbuf, len) == 0) {
 				ret = 1;
+			}
+		} else {
+			/* TODO: implement parsing for other pages */
+			switch (hdrs[i].id){
+				case 0x03: /* RPMC parameter table as specified in JESD260 */
+					if (hdrs[i].v_major != 0x01 || hdrs[i].v_minor != 0x0) {
+						msg_cdbg("The chip contains an unknown "
+							 "version of the JEDEC RPMC "
+							 "parameters table (Version: %u.%u), skipping it.\n",
+							 hdrs[i].v_major, hdrs[i].v_minor);
+					} else {
+						parse_rpmc_parameter_table(flash->chip, tbuf, len);
+					}
+					break;
+				default:
+					msg_cdbg("Support for SFDP Page with ID 0x%02x not implemented"
+						 ", skipping it.\n",
+						 hdrs[i].id);
+					break;
+			}
 		}
+
 		free(tbuf);
 	}
 

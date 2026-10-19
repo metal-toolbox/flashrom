@@ -1,20 +1,11 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2000 Ronald G. Minnich <rminnich@gmail.com>
- * Copyright (C) 2005-2009 coresystems GmbH
- * Copyright (C) 2006-2009 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2000 Ronald G. Minnich <rminnich@gmail.com>
+ * SPDX-FileCopyrightText: 2005-2009 coresystems GmbH
+ * SPDX-FileCopyrightText: 2006-2009 Carl-Daniel Hailfinger
  */
 
 #ifndef __FLASH_H__
@@ -148,6 +139,14 @@ enum write_granularity {
  * other flash chips, such as the ENE KB9012 internal flash, work the opposite way.
  */
 #define FEATURE_ERASED_ZERO	(1 << 18)
+/*
+ * Feature indicates that the chip does not require erase before writing:
+ * write operations can set any bit to any value without first doing an erase,
+ * but bulk erase operations may still be supported.
+ *
+ * EEPROMs usually behave this way (compare to Flash, which requires erase),
+ * for example the ST M95M02.
+ */
 #define FEATURE_NO_ERASE	(1 << 19)
 
 #define FEATURE_WRSR_EXT2	(1 << 20)
@@ -163,6 +162,25 @@ enum write_granularity {
 
 /* Whether chip has configuration register (RDCR/WRSR_EXT2 commands) */
 #define FEATURE_CFGR	    (1 << 25)
+
+/*
+ * Whether the chip supports serial flash hardening specified in JESD260
+ */
+#define FEATURE_FLASH_HARDENING (1 << 26)
+
+ /*
+ * Each die of the multi-die chip has its own status register.
+ * On such chips global chip commands (C7h/60h-Chip Erase), require
+ * polling SR on each die separately to assure completion.
+ */
+#define FEATURE_STATUS_PER_DIE	(1 << 27)
+
+/*
+ * Chip uses a 16-bit (2-byte) address for read/program instructions instead of
+ * the default 24-bit (3-byte) address. Used by small SPI EEPROMs such as the
+ * ST M95320 (chips up to 64 KiB in the M95XXX family).
+ */
+#define FEATURE_ADDR_2BYTE	(1 << 28)
 
 #define ERASED_VALUE(flash)	(((flash)->chip->feature_bits & FEATURE_ERASED_ZERO) ? 0x00 : 0xff)
 #define UNERASED_VALUE(flash)	(((flash)->chip->feature_bits & FEATURE_ERASED_ZERO) ? 0xff : 0x00)
@@ -229,6 +247,7 @@ enum decode_range_func {
 	DECODE_RANGE_SPI25_64K_BLOCK = 2,
 	DECODE_RANGE_SPI25_BIT_CMP = 3,
 	DECODE_RANGE_SPI25_2X_BLOCK = 4,
+	DECODE_RANGE_SPI25_BP3_TO_1_16 = 5,
 };
 typedef void (decode_range_func_t)(size_t *start, size_t *len, const struct wp_bits *, size_t chip_len);
 
@@ -243,6 +262,7 @@ enum probe_func {
 	PROBE_EN29LV640B,
 	PROBE_SPI_AT25F,
 	PROBE_SPI_AT45DB,
+	PROBE_SPI_AT45DB_E,
 	PROBE_SPI_BIG_SPANSION,
 	PROBE_SPI_RDID,
 	PROBE_SPI_RDID4,
@@ -266,9 +286,15 @@ enum write_func {
 	WRITE_82802AB,
 	WRITE_EN29LV640B,
 	EDI_CHIP_WRITE,
+#ifdef FLASHROM_TEST
 	TEST_WRITE_INJECTOR, /* special case must come last. */
+#endif
 };
 typedef int (write_func_t)(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len);
+
+#ifdef FLASHROM_TEST
+extern write_func_t *g_test_write_injector;
+#endif
 
 enum read_func {
 	NO_READ_FUNC = 0, /* 0 indicates no read function set. */
@@ -278,10 +304,16 @@ enum read_func {
 	EDI_CHIP_READ,
 	SPI_READ_AT45DB,
 	SPI_READ_AT45DB_E8,
+#ifdef FLASHROM_TEST
 	TEST_READ_INJECTOR, /* special case must come last. */
+#endif
 };
 typedef int (read_func_t)(struct flashctx *flash, uint8_t *buf, unsigned int start, unsigned int len);
 int read_flash(struct flashctx *flash, uint8_t *buf, unsigned int start, unsigned int len);
+
+#ifdef FLASHROM_TEST
+extern read_func_t *g_test_read_injector;
+#endif
 
 enum block_erase_func {
 	NO_BLOCK_ERASE_FUNC = 0, /* 0 indicates no block erase function set. */
@@ -319,8 +351,20 @@ enum block_erase_func {
 	ERASE_SECTOR_49LFXXXC,
 	STM50_SECTOR_ERASE,
 	EDI_CHIP_BLOCK_ERASE,
-	TEST_ERASE_INJECTOR, /* special case must come last. */
+#ifdef FLASHROM_TEST
+	/* special cases must come last. */
+	TEST_ERASE_INJECTOR_1,
+	TEST_ERASE_INJECTOR_2,
+	TEST_ERASE_INJECTOR_3,
+	TEST_ERASE_INJECTOR_4,
+	TEST_ERASE_INJECTOR_5,
+#endif
 };
+
+#ifdef FLASHROM_TEST
+#define NUM_TEST_ERASE_INJECTORS 5
+extern erasefunc_t *g_test_erase_injector[NUM_TEST_ERASE_INJECTORS];
+#endif
 
 enum blockprotect_func {
 	NO_BLOCKPROTECT_FUNC = 0, /* 0 indicates no unlock function set. */
@@ -382,6 +426,7 @@ enum printlock_func {
 	SPI_PRETTYPRINT_STATUS_REGISTER_BP1_SRWD,
 	SPI_PRETTYPRINT_STATUS_REGISTER_BP2_BPL,
 	SPI_PRETTYPRINT_STATUS_REGISTER_BP2_EP_SRWD,
+	SPI_PRETTYPRINT_STATUS_REGISTER_BP2_EP_SRWD_SR2,
 	SPI_PRETTYPRINT_STATUS_REGISTER_BP2_SRWD,
 	SPI_PRETTYPRINT_STATUS_REGISTER_BP2_TB_BPL,
 	SPI_PRETTYPRINT_STATUS_REGISTER_SRWD_SEC_TB_BP2_WELWIP,
@@ -398,6 +443,20 @@ enum printlock_func {
 typedef int (printlockfunc_t)(struct flashctx *flash);
 printlockfunc_t *lookup_printlock_func_ptr(struct flashctx *flash);
 
+/* Die selection function for multi-die chips */
+enum dieselect_func {
+	NO_DIESELECT_FUNC = 0,
+	SPI_DIESELECT_C2,       /* Winbond 0xC2 Software Die Select */
+#ifdef FLASHROM_TEST
+	TEST_DIESELECT_INJECTOR,
+#endif
+};
+typedef int (dieselect_func_t)(struct flashctx* flash, unsigned int die_num);
+
+#ifdef FLASHROM_TEST
+extern dieselect_func_t *g_test_dieselect_injector;
+#endif
+
 struct flashchip {
 	const char *vendor;
 	const char *name;
@@ -412,7 +471,7 @@ struct flashchip {
 	uint32_t manufacture_id;
 	uint32_t model_id;
 
-	/* Total chip size in kilobytes */
+	/* Total chip size in kibibytes */
 	unsigned int total_size;
 	/* Chip page size in bytes */
 	unsigned int page_size;
@@ -465,11 +524,20 @@ struct flashchip {
 	enum blockprotect_func unlock;
 	enum write_func write;
 	enum read_func read;
+
+	/* Voltage range in millivolt */
 	struct voltage {
 		uint16_t min;
 		uint16_t max;
 	} voltage;
+
 	enum write_granularity gran;
+
+	/* Die size in kilobytes. Should be set for multi-die chips not needed otherwise. */
+	unsigned int die_size;
+
+	/* Die selection callback. Should be set for multi-die chips not needed otherwise. */
+	enum dieselect_func die_select;
 
 	struct reg_bit_map {
 		/* Status register protection bit (SRP) */
@@ -511,11 +579,42 @@ struct flashchip {
 	 * and determines what protection range they select.
 	 */
 	enum decode_range_func decode_range;
+
+	struct rpmc_config {
+		uint8_t op1_opcode;
+		uint8_t op2_opcode;
+
+		unsigned int num_counters;
+
+		/*
+		 * Busy Polling Method :
+		 * ‘0’: Poll for OP1 busy using OP2 Extended Status[0].
+		 *      No OP1 Suspended State Support.
+		 * ‘1’: Poll for OP1 busy using Read Status (05H).
+		 *      Suspended State is supported.
+		 */
+		enum busy_polling_methods {
+			POLL_OP2_EXTENDED_STATUS = 0,
+			POLL_READ_STATUS = 1
+		} busy_polling_method;
+
+		unsigned int update_rate;
+
+		/* All times in microsecond (us) */
+		unsigned int polling_delay_read_counter_us;
+		unsigned int polling_short_delay_write_counter_us;
+		unsigned int polling_long_delay_write_counter_us;
+	} rpmc_ctx;
 };
 
 typedef int (*chip_restore_fn_cb_t)(struct flashctx *flash, void *data);
 typedef int (blockprotect_func_t)(struct flashctx *flash);
 blockprotect_func_t *lookup_blockprotect_func_ptr(const struct flashchip *const chip);
+
+struct stage_progress {
+	size_t current;
+	size_t total;
+};
 
 struct flashrom_flashctx {
 	struct flashchip *chip;
@@ -553,8 +652,15 @@ struct flashrom_flashctx {
 		void *data;
 	} chip_restore_fn[MAX_CHIP_RESTORE_FUNCTIONS];
 	/* Progress reporting */
-	flashrom_progress_callback *progress_callback;
-	struct flashrom_progress *progress_state;
+	flashrom_progress_callback_v2 *progress_callback;
+	struct flashrom_progress progress_state;
+	struct stage_progress stage_progress[FLASHROM_PROGRESS_NR];
+	/* deprecated, do not use */
+	flashrom_progress_callback *deprecated_progress_callback;
+	struct flashrom_progress *deprecated_progress_state;
+
+	/* Maximum allowed % of redundant erase */
+	int sacrifice_ratio;
 };
 
 /* Timing used in probe routines. ZERO is -2 to differentiate between an unset
@@ -570,40 +676,8 @@ struct flashrom_flashctx {
 extern const struct flashchip flashchips[];
 extern const unsigned int flashchips_size;
 
-/* parallel.c */
-void chip_writeb(const struct flashctx *flash, uint8_t val, chipaddr addr);
-void chip_writew(const struct flashctx *flash, uint16_t val, chipaddr addr);
-void chip_writel(const struct flashctx *flash, uint32_t val, chipaddr addr);
-void chip_writen(const struct flashctx *flash, const uint8_t *buf, chipaddr addr, size_t len);
-uint8_t chip_readb(const struct flashctx *flash, const chipaddr addr);
-uint16_t chip_readw(const struct flashctx *flash, const chipaddr addr);
-uint32_t chip_readl(const struct flashctx *flash, const chipaddr addr);
-void chip_readn(const struct flashctx *flash, uint8_t *buf, const chipaddr addr, size_t len);
-
 /* print.c */
 int print_supported(void);
-void print_supported_wiki(void);
-
-/* helpers.c */
-uint32_t address_to_bits(uint32_t addr);
-unsigned int bitcount(unsigned long a);
-#undef MIN
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#undef MAX
-#define MAX(a, b) ((a) > (b) ? (a) : (b))
-int max(int a, int b);
-int min(int a, int b);
-char *strcat_realloc(char *dest, const char *src);
-void tolower_string(char *str);
-uint8_t reverse_byte(uint8_t x);
-void reverse_bytes(uint8_t *dst, const uint8_t *src, size_t length);
-#ifdef __MINGW32__
-char* strtok_r(char *str, const char *delim, char **nextp);
-char *strndup(const char *str, size_t size);
-#endif
-#if defined(__DJGPP__) || (!defined(__LIBPAYLOAD__) && !defined(HAVE_STRNLEN))
-size_t strnlen(const char *str, size_t n);
-#endif
 
 /* flashrom.c */
 extern const char flashrom_version[];
@@ -632,6 +706,8 @@ erasefunc_t *lookup_erase_func_ptr(const struct block_eraser *const eraser);
 int check_erased_range(struct flashctx *flash, unsigned int start, unsigned int len);
 unsigned int get_next_write(const uint8_t *have, const uint8_t *want, unsigned int len, unsigned int *first_start, enum write_granularity gran);
 int write_flash(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len);
+dieselect_func_t *lookup_dieselect_func_ptr(const struct flashchip *chip);
+
 
 /* Something happened that shouldn't happen, but we can go on. */
 #define ERROR_FLASHROM_NONFATAL 0x100
@@ -646,57 +722,21 @@ int write_flash(struct flashctx *flash, const uint8_t *buf, unsigned int start, 
  */
 #define ERROR_FLASHROM_LIMIT -201
 
+#define ERROR_FLASHROM_PROBE_NO_CHIPS_FOUND -1
+#define ERROR_FLASHROM_PROBE_INTERNAL_ERROR -2
+#define ERROR_FLASHROM_PREPARE_FLASH_ACCESS -3
+
+struct cli_progress {
+	unsigned int stage_pc[FLASHROM_PROGRESS_NR];
+	unsigned int visible_stages; /* Bitmask of stages with non-zero progress. */
+	bool stage_setup; /* Flag to know when to reset progress data. */
+};
+
 /* cli_common.c */
 void print_chip_support_status(const struct flashchip *chip);
 
-/* cli_output.c */
-extern enum flashrom_log_level verbose_screen;
-extern enum flashrom_log_level verbose_logfile;
-int open_logfile(const char * const filename);
-int close_logfile(void);
-void start_logging(void);
-int flashrom_print_cb(enum flashrom_log_level level, const char *fmt, va_list ap);
-void flashrom_progress_cb(struct flashrom_flashctx *flashctx);
-/* Let gcc and clang check for correct printf-style format strings. */
-int print(enum flashrom_log_level level, const char *fmt, ...)
-#ifdef __MINGW32__
-#  ifndef __MINGW_PRINTF_FORMAT
-#    define __MINGW_PRINTF_FORMAT gnu_printf
-#  endif
-__attribute__((format(__MINGW_PRINTF_FORMAT, 2, 3)));
-#else
-__attribute__((format(printf, 2, 3)));
-#endif
-#define msg_gerr(...)	print(FLASHROM_MSG_ERROR, __VA_ARGS__)	/* general errors */
-#define msg_perr(...)	print(FLASHROM_MSG_ERROR, __VA_ARGS__)	/* programmer errors */
-#define msg_cerr(...)	print(FLASHROM_MSG_ERROR, __VA_ARGS__)	/* chip errors */
-#define msg_gwarn(...)	print(FLASHROM_MSG_WARN, __VA_ARGS__)	/* general warnings */
-#define msg_pwarn(...)	print(FLASHROM_MSG_WARN, __VA_ARGS__)	/* programmer warnings */
-#define msg_cwarn(...)	print(FLASHROM_MSG_WARN, __VA_ARGS__)	/* chip warnings */
-#define msg_ginfo(...)	print(FLASHROM_MSG_INFO, __VA_ARGS__)	/* general info */
-#define msg_pinfo(...)	print(FLASHROM_MSG_INFO, __VA_ARGS__)	/* programmer info */
-#define msg_cinfo(...)	print(FLASHROM_MSG_INFO, __VA_ARGS__)	/* chip info */
-#define msg_gdbg(...)	print(FLASHROM_MSG_DEBUG, __VA_ARGS__)	/* general debug */
-#define msg_pdbg(...)	print(FLASHROM_MSG_DEBUG, __VA_ARGS__)	/* programmer debug */
-#define msg_cdbg(...)	print(FLASHROM_MSG_DEBUG, __VA_ARGS__)	/* chip debug */
-#define msg_gdbg2(...)	print(FLASHROM_MSG_DEBUG2, __VA_ARGS__)	/* general debug2 */
-#define msg_pdbg2(...)	print(FLASHROM_MSG_DEBUG2, __VA_ARGS__)	/* programmer debug2 */
-#define msg_cdbg2(...)	print(FLASHROM_MSG_DEBUG2, __VA_ARGS__)	/* chip debug2 */
-#define msg_gspew(...)	print(FLASHROM_MSG_SPEW, __VA_ARGS__)	/* general debug spew  */
-#define msg_pspew(...)	print(FLASHROM_MSG_SPEW, __VA_ARGS__)	/* programmer debug spew  */
-#define msg_cspew(...)	print(FLASHROM_MSG_SPEW, __VA_ARGS__)	/* chip debug spew  */
-void update_progress(struct flashctx *flash, enum flashrom_progress_stage stage, size_t current, size_t total);
+/* libflashrom.c */
+void init_progress(struct flashctx *flash, enum flashrom_progress_stage stage, size_t total);
+void update_progress(struct flashctx *flash, enum flashrom_progress_stage stage, size_t increment);
 
-/* spi.c */
-struct spi_command {
-	unsigned int writecnt;
-	unsigned int readcnt;
-	const unsigned char *writearr;
-	unsigned char *readarr;
-};
-#define NULL_SPI_CMD { 0, 0, NULL, NULL, }
-int spi_send_command(const struct flashctx *flash, unsigned int writecnt, unsigned int readcnt, const unsigned char *writearr, unsigned char *readarr);
-int spi_send_multicommand(const struct flashctx *flash, struct spi_command *cmds);
-
-enum chipbustype get_buses_supported(void);
 #endif				/* !__FLASH_H__ */

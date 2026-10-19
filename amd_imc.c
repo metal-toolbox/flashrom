@@ -1,25 +1,17 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2013 Rudolf Marek <r.marek@assembler.cz>
- * Copyright (C) 2013 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2013 Rudolf Marek <r.marek@assembler.cz>
+ * SPDX-FileCopyrightText: 2013 Stefan Tauner
  */
 
-#include "flash.h"
 #include "programmer.h"
 #include "hwaccess_x86_io.h"
 #include "spi.h"
 #include "platform/pci.h"
+#include "platform/udelay.h"
+#include "log.h"
 
 /* same as serverengines */
 static void enter_conf_mode_ec(uint16_t port)

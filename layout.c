@@ -1,29 +1,21 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2005-2008 coresystems GmbH
- * (Written by Stefan Reinauer <stepan@coresystems.de> for coresystems GmbH)
- * Copyright (C) 2011-2013 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2005-2008 coresystems GmbH (Written by Stefan Reinauer <stepan@coresystems.de> for coresystems GmbH)
+ * SPDX-FileCopyrightText: 2011-2013 Stefan Tauner
  */
 
+#include "log.h"
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <limits.h>
-#include "flash.h"
 #include "programmer.h"
 #include "layout.h"
+#include "helpers.h"
+#include "platform/string.h"
 
 struct flashrom_layout {
 	struct romentry *head;
@@ -285,6 +277,19 @@ int process_include_args(struct flashrom_layout *l, const struct layout_include_
 		tmp = tmp->next;
 	}
 	msg_ginfo(".\n");
+	return 0;
+}
+
+int check_include_args_filename(const struct layout_include_args *include_args)
+{
+	const struct layout_include_args *arg;
+	for (arg = include_args; arg; arg = arg->next) {
+		if (!arg->file || (arg->file[0] == '\0')) {
+			fprintf(stderr, "Error: No region file specified for -i/--include option.\n");
+			return 1;
+		}
+	}
+
 	return 0;
 }
 

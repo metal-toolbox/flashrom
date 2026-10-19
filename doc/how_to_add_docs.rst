@@ -1,6 +1,11 @@
 How to add or update docs
 =========================
 
+Documentation files live in ``/doc`` directory in the source tree, so
+adding or updating documentation follows the same process as changing
+the code. If you've never done it before, start by carefully
+reading the :doc:`/dev_guide/development_guide`.
+
 To add or update a documentation page, you need to create or modify
 an ``.rst`` file in the ``/doc`` directory and send a patch for
 review.
@@ -28,8 +33,8 @@ Misc questions
 
 * We use CC-BY-4.0 license for documentation.
 * Writing style can be formal or informal, it's mostly up to you, the
-  important thing is to make the text clear, readable and unambiguous. You
-  can insert images if this really helps the readers to understand the
-  instructions.
+  important thing is to make the text clear, readable and unambiguous.
+* You can insert images if this really helps the readers to understand the
+  instructions. Please try to target size 1024x768 and within 128Kb whenever possible.
 * Documentation should be relevant to either flashrom usage or flashrom
   development

@@ -1,16 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2009 Carl-Daniel Hailfinger
  *
  * Header file for flash chip drivers. Included from flash.h.
  * As a general rule, every function listed here should take a pointer to
@@ -21,12 +13,6 @@
 #define __CHIPDRIVERS_H__ 1
 
 #include "flash.h"	/* for chipaddr and flashctx */
-
-/* spi.c */
-int spi_aai_write(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len);
-int spi_chip_write_256(struct flashctx *flash, const uint8_t *buf, unsigned int start, unsigned int len);
-int spi_chip_read(struct flashctx *flash, uint8_t *buf, unsigned int start, int unsigned len);
-bool spi_probe_opcode(const struct flashctx *flash, uint8_t opcode);
 
 /* spi25.c */
 int probe_spi_rdid(struct flashctx *flash);
@@ -80,6 +66,7 @@ int erase_opaque(struct flashctx *flash, unsigned int blockaddr, unsigned int bl
 
 /* at45db.c */
 int probe_spi_at45db(struct flashctx *flash);
+int probe_spi_at45db_e(struct flashctx *flash);
 int spi_prettyprint_status_register_at45db(struct flashctx *flash);
 int spi_disable_blockprotect_at45db(struct flashctx *flash);
 int spi_read_at45db(struct flashctx *flash, uint8_t *buf, unsigned int start, unsigned int len);
@@ -177,5 +164,6 @@ void decode_range_spi25(size_t *start, size_t *len, const struct wp_bits *, size
 void decode_range_spi25_64k_block(size_t *start, size_t *len, const struct wp_bits *, size_t chip_len);
 void decode_range_spi25_bit_cmp(size_t *start, size_t *len, const struct wp_bits *, size_t chip_len);
 void decode_range_spi25_2x_block(size_t *start, size_t *len, const struct wp_bits *, size_t chip_len);
+void decode_range_spi25_bp3_to_1_16(size_t *start, size_t *len, const struct wp_bits *, size_t chip_len);
 
 #endif /* !__CHIPDRIVERS_H__ */

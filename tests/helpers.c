@@ -1,24 +1,18 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright 2020 Google LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2020 Google LLC
  */
 
 #include <include/test.h>
 
 #include "tests.h"
-#include "flash.h"
+#include "helpers.h"
+#include "platform/string.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 
 void address_to_bits_test_success(void **state)
 {
@@ -76,4 +70,40 @@ void reverse_bytes_test_success(void **state)
 	reverse_bytes(dst, src, 2);
 	assert_int_equal(src[0], dst[1]);
 	assert_int_equal(src[1], dst[0]);
+}
+
+void parse_voltage_success(void **state)
+{
+	(void) state; /* unused */
+
+	const char *volt[] = {"2.3", "2,3", "3.5V", "3,5V", "1950mV", "2700mv", "1950milliv"};
+	const int result[] = {2300, 2300, 3500, 3500, 1950, 2700, 1950};
+	const int count = sizeof(volt) / sizeof((volt)[0]);
+
+	for (int i = 0; i < count; i++) {
+		char *voltage = strdup(volt[i]);
+		assert_int_equal(result[i], parse_voltage(voltage));
+		free(voltage);
+	}
+}
+
+void parse_voltage_invalid(void **state)
+{
+	(void) state; /* unused */
+
+	const char *invalid_volt[] = {
+		"2300millimeter",
+		"___",
+		"village",
+		"2.3village",
+		"2300village",
+		"milliv1950",
+	};
+	const int count = sizeof(invalid_volt) / sizeof((invalid_volt)[0]);
+
+	for (int i = 0; i < count; i++) {
+		char *voltage = strdup(invalid_volt[i]);
+		assert_int_equal(-1, parse_voltage(voltage));
+		free(voltage);
+	}
 }

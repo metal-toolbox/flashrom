@@ -1,25 +1,18 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009, 2010 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2009, 2010 Carl-Daniel Hailfinger
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include "flash.h"
+#include "platform/string.h"
 #include "programmer.h"
 #include "spi.h"
+#include "platform/udelay.h"
+#include "log.h"
+#include <stdlib.h>
+#include <ctype.h>
+#include <stdio.h>
 
 /* Note that CS# is active low, so val=0 means the chip is active. */
 static void bitbang_spi_set_cs(const struct bitbang_spi_master * const master, int val, void *spi_data)

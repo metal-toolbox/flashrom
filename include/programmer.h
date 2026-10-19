@@ -1,20 +1,11 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2000 Ronald G. Minnich <rminnich@gmail.com>
- * Copyright (C) 2005-2009 coresystems GmbH
- * Copyright (C) 2006-2009 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2000 Ronald G. Minnich <rminnich@gmail.com>
+ * SPDX-FileCopyrightText: 2005-2009 coresystems GmbH
+ * SPDX-FileCopyrightText: 2006-2009 Carl-Daniel Hailfinger
  */
 
 #ifndef __PROGRAMMER_H__
@@ -23,7 +14,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "flash.h"	/* for chipaddr and flashctx */
+#include "spi.h"
 
 enum programmer_type {
 	PCI = 1, /* to detect uninitialized values */
@@ -71,6 +62,7 @@ extern const struct programmer_entry programmer_developerbox;
 extern const struct programmer_entry programmer_digilent_spi;
 extern const struct programmer_entry programmer_drkaiser;
 extern const struct programmer_entry programmer_dummy;
+extern const struct programmer_entry programmer_fault;
 extern const struct programmer_entry programmer_ft2232_spi;
 extern const struct programmer_entry programmer_gfxnvidia;
 extern const struct programmer_entry programmer_internal;
@@ -88,6 +80,7 @@ extern const struct programmer_entry programmer_nicintel_eeprom;
 extern const struct programmer_entry programmer_nicintel_spi;
 extern const struct programmer_entry programmer_nicnatsemi;
 extern const struct programmer_entry programmer_nicrealtek;
+extern const struct programmer_entry programmer_nv_sma_spi;
 extern const struct programmer_entry programmer_ogp_spi;
 extern const struct programmer_entry programmer_pickit2_spi;
 extern const struct programmer_entry programmer_pony_spi;
@@ -97,6 +90,7 @@ extern const struct programmer_entry programmer_realtek_mst_i2c_spi;
 extern const struct programmer_entry programmer_satamv;
 extern const struct programmer_entry programmer_satasii;
 extern const struct programmer_entry programmer_serprog;
+extern const struct programmer_entry programmer_spidriver;
 extern const struct programmer_entry programmer_stlinkv3_spi;
 extern const struct programmer_entry programmer_usbblaster_spi;
 extern const struct programmer_entry programmer_dirtyjtag_spi;
@@ -119,33 +113,9 @@ struct bitbang_spi_master {
 	unsigned int half_period;
 };
 
-struct pci_dev;
-struct pci_filter;
-
-/* pcidev.c */
-// FIXME: This needs to be local, not global(?)
-extern struct pci_access *pacc;
-int pci_init_common(void);
-uintptr_t pcidev_readbar(struct pci_dev *dev, int bar);
-struct pci_dev *pcidev_init(const struct programmer_cfg *cfg, const struct dev_entry *devs, int bar);
-struct pci_dev *pcidev_scandev(struct pci_filter *filter, struct pci_dev *start);
-struct pci_dev *pcidev_getdevfn(struct pci_dev *dev, const int func);
-struct pci_dev *pcidev_find_vendorclass(uint16_t vendor, uint16_t devclass);
-struct pci_dev *pcidev_card_find(uint16_t vendor, uint16_t device, uint16_t card_vendor, uint16_t card_device);
-struct pci_dev *pcidev_find(uint16_t vendor, uint16_t device);
-/* rpci_write_* are reversible writes. The original PCI config space register
- * contents will be restored on shutdown.
- * To clone the pci_dev instances internally, the `pacc` global
- * variable has to reference a pci_access method that is compatible
- * with the given pci_dev handle. The referenced pci_access (not
- * the variable) has to stay valid until the shutdown handlers are
- * finished.
- */
-int rpci_write_byte(struct pci_dev *dev, int reg, uint8_t data);
-int rpci_write_word(struct pci_dev *dev, int reg, uint16_t data);
-int rpci_write_long(struct pci_dev *dev, int reg, uint32_t data);
 
 #if CONFIG_INTERNAL == 1
+struct pci_dev;
 struct penable {
 	uint16_t vendor_id;
 	uint16_t device_id;
@@ -208,21 +178,13 @@ struct board_info {
 	const char *vendor;
 	const char *name;
 	const enum test_state working;
-#ifdef CONFIG_PRINT_WIKI
 	const char *url;
 	const char *note;
-#endif
 };
 
 extern const struct board_info boards_known[];
 extern const struct board_info laptops_known[];
 #endif
-
-/* udelay.c */
-void myusec_delay(unsigned int usecs);
-void myusec_calibrate_delay(void);
-void internal_sleep(unsigned int usecs);
-void default_delay(unsigned int usecs);
 
 #if CONFIG_INTERNAL == 1
 /* board_enable.c */
@@ -250,13 +212,6 @@ int processor_flash_enable(void);
 /* cbtable.c */
 int cb_parse_table(const char **vendor, const char **model);
 int cb_check_image(const uint8_t *bios, unsigned int size);
-
-/* dmi.c */
-#if defined(__i386__) || defined(__x86_64__)
-void dmi_init(int *is_laptop);
-bool dmi_is_supported(void);
-int dmi_match(const char *pattern);
-#endif // defined(__i386__) || defined(__x86_64__)
 
 /* internal.c */
 struct superio {
@@ -359,11 +314,16 @@ enum ich_chipset {
 	CHIPSET_400_SERIES_COMET_POINT,
 	CHIPSET_500_SERIES_TIGER_POINT,
 	CHIPSET_600_SERIES_ALDER_POINT,
-	CHIPSET_METEOR_LAKE,
+	CHIPSET_700_SERIES_RAPTOR_POINT,
 	CHIPSET_APOLLO_LAKE,
 	CHIPSET_GEMINI_LAKE,
 	CHIPSET_JASPER_LAKE,
 	CHIPSET_ELKHART_LAKE,
+	/* All chipsets after METEOR_LAKE should support checking BIOS_BM to get read/write access to of FREG0~15 */
+	CHIPSET_METEOR_LAKE,
+	CHIPSET_PANTHER_LAKE,
+	CHIPSET_WILDCAT_LAKE,
+	CHIPSET_NOVA_LAKE,
 };
 
 /* ichspi.c */
@@ -424,6 +384,12 @@ struct opaque_master {
 	enum flashrom_wp_result (*wp_read_cfg)(struct flashrom_wp_cfg *, struct flashctx *);
 	enum flashrom_wp_result (*wp_get_ranges)(struct flashrom_wp_ranges **, struct flashctx *);
 	void (*get_region)(const struct flashctx *flash, unsigned int addr, struct flash_region *region);
+	/*
+	 * Returns chipset-level protections (e.g., when SPI controller refuses
+	 * to pass read/write commands to the flash chip based on chipset's
+	 * configuration)
+	 */
+	void (*get_protected_ranges)(struct protected_ranges *);
 	int (*shutdown)(void *data);
 	void (*delay) (const struct flashctx *flash, unsigned int usecs);
 	void *data;
@@ -460,54 +426,7 @@ struct registered_master {
 extern struct registered_master registered_masters[];
 extern int registered_master_count;
 int register_master(const struct registered_master *mst);
-
-
-
-/* serial.c */
-#if IS_WINDOWS
-typedef HANDLE fdtype;
-#define SER_INV_FD	INVALID_HANDLE_VALUE
-#else
-typedef int fdtype;
-#define SER_INV_FD	-1
-#endif
-
-void sp_flush_incoming(void);
-fdtype sp_openserport(char *dev, int baud);
-extern fdtype sp_fd;
-int serialport_config(fdtype fd, int baud);
-int serialport_shutdown(void *data);
-int serialport_write(const unsigned char *buf, unsigned int writecnt);
-int serialport_write_nonblock(const unsigned char *buf, unsigned int writecnt, unsigned int timeout, unsigned int *really_wrote);
-int serialport_read(unsigned char *buf, unsigned int readcnt);
-int serialport_read_nonblock(unsigned char *c, unsigned int readcnt, unsigned int timeout, unsigned int *really_read);
-
-/* Serial port/pin mapping:
-
-  1	CD	<-
-  2	RXD	<-
-  3	TXD	->
-  4	DTR	->
-  5	GND     --
-  6	DSR	<-
-  7	RTS	->
-  8	CTS	<-
-  9	RI	<-
-*/
-enum SP_PIN {
-	PIN_CD = 1,
-	PIN_RXD,
-	PIN_TXD,
-	PIN_DTR,
-	PIN_GND,
-	PIN_DSR,
-	PIN_RTS,
-	PIN_CTS,
-	PIN_RI,
-};
-
-void sp_set_pin(enum SP_PIN pin, int val);
-int sp_get_pin(enum SP_PIN pin);
+int register_master_shutdown(int (*shutdown)(void *data), void *data);
 
 /* spi_master feature checks */
 static inline bool spi_master_4ba(const struct flashctx *const flash)
@@ -527,13 +446,6 @@ static inline bool spi_chip_4ba(const struct flashctx *const flash)
 		(flash->chip->feature_bits & (FEATURE_4BA_ENTER | FEATURE_4BA_ENTER_WREN | FEATURE_4BA_ENTER_EAR7));
 }
 
-/* usbdev.c */
-struct libusb_device_handle;
-struct libusb_context;
-struct libusb_device_handle *usb_dev_get_by_vid_pid_serial(
-		struct libusb_context *usb_ctx, uint16_t vid, uint16_t pid, const char *serialno);
-struct libusb_device_handle *usb_dev_get_by_vid_pid_number(
-		struct libusb_context *usb_ctx, uint16_t vid, uint16_t pid, unsigned int num);
-
+enum chipbustype get_buses_supported(void);
 
 #endif				/* !__PROGRAMMER_H__ */

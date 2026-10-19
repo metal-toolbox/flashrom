@@ -1,6 +1,6 @@
 Name:		flashrom
 #Update this version string and create a matching v%{version} tag to cut a release
-Version:	1.3.100
+Version:	1.8.0
 Release:	0%{?dist}
 Summary:	Simple program for reading/writing flash chips content
 License:	GPLv2
@@ -9,10 +9,12 @@ URL:		https://flashrom.org
 Source0:	https://github.com/metal-toolbox/%{name}/archive/refs/tags/v%{version}.tar.gz
 
 BuildRequires:	gcc
+BuildRequires:	meson
+BuildRequires:	ninja-build
+BuildRequires:	pkgconfig
 BuildRequires:	pciutils-devel
 BuildRequires:	libusb1-devel
-BuildRequires:	systemd
-BuildRequires:	systemd-devel
+BuildRequires:	openssl-devel
 BuildRequires:	zlib-devel
 %ifarch %{ix86} x86_64 aarch64
 BuildRequires:	dmidecode
@@ -32,14 +34,17 @@ other programmer devices.
 %autosetup -p1 -n %{name}-%{version}
 
 %build
-CFLAGS="%{optflags}" LDFLAGS="%{build_ldflags}" %{__make} PREFIX=/usr CONFIG_INTERNAL=yes WARNERROR=no %{?_smp_mflags}
+%meson --auto-features=auto -Duse_git_version=disabled -Dtests=disabled -Dman-pages=disabled -Ddocumentation=disabled
+%meson_build
 
 %install
-%{__make} PREFIX=/usr DESTDIR=$RPM_BUILD_ROOT install
+%meson_install
+# The classic CLI is statically linked against libflashrom; ship only the CLI
+rm -rf %{buildroot}%{_includedir} %{buildroot}%{_libdir}
 
 %files
-%license COPYING
+%license COPYING.rst
 %{_sbindir}/%{name}
-/usr/share/bash-completion/completions/flashrom.bash
+%{_datadir}/bash-completion/completions/flashrom.bash
 
 %changelog

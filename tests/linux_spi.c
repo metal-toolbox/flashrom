@@ -1,19 +1,12 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright 2021 Google LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2021 Google LLC
  */
 
 #include "lifecycle.h"
+#include "helpers.h"
 
 #if CONFIG_LINUX_SPI == 1
 static int linux_spi_ioctl(void *state, int fd, unsigned long request, va_list args) {
@@ -65,7 +58,9 @@ void linux_spi_probe_lifecycle_test_success(void **state)
 		.fallback_open_state = &linux_spi_fallback_open_state,
 	};
 
-	run_probe_lifecycle(state, &linux_spi_io, &programmer_linux_spi, "dev=/dev/null", "W25Q128.V");
+	const char *expected_matched_names[1] = {"W25Q128.V"};
+	run_probe_v2_lifecycle(state, &linux_spi_io, &programmer_linux_spi, "dev=/dev/null", "W25Q128.V",
+				expected_matched_names, 1);
 }
 #else
 	SKIP_TEST(linux_spi_probe_lifecycle_test_success)

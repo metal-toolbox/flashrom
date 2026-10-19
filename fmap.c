@@ -1,60 +1,31 @@
 /*
- * Copyright 2010, Google LLC.
- * Copyright 2018-present, Facebook Inc.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- *    * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *    * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following disclaimer
- * in the documentation and/or other materials provided with the
- * distribution.
- *    * Neither the name of Google Inc. nor the names of its
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Alternatively, this software may be distributed under the terms of the
- * GNU General Public License ("GPL") version 2 as published by the Free
- * Software Foundation.
+ * SPDX-License-Identifier: BSD-3-Clause OR GPL-2.0-only
+ * SPDX-FileCopyrightText: 2010, Google LLC.
+ * SPDX-FileCopyrightText: 2018-present, Facebook Inc. All rights reserved.
  */
 
+#include "fmap.h"
+
+#include "platform/string.h"
+#include "flash.h"
+#include "log.h"
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
 #include <sys/types.h>
-#include "flash.h"
-#include "fmap.h"
 
 static size_t fmap_size(const struct fmap *fmap)
 {
 	return sizeof(*fmap) + (fmap->nareas * sizeof(struct fmap_area));
 }
 
+/* Make a best-effort assessment if the given fmap is real */
 static int is_valid_fmap(const struct fmap *fmap)
 {
 	if (memcmp(fmap, FMAP_SIGNATURE, strlen(FMAP_SIGNATURE)) != 0)
 		return 0;
 	/* strings containing the magic tend to fail here */
-	if (fmap->ver_major > FMAP_VER_MAJOR)
-		return 0;
-	if (fmap->ver_minor > FMAP_VER_MINOR)
+	if (fmap->ver_major != FMAP_VER_MAJOR)
 		return 0;
 	/* a basic consistency check: flash address space size should be larger
 	 * than the size of the fmap data structure */
@@ -191,6 +162,7 @@ static int fmap_bsearch_rom(struct fmap **fmap_out, struct flashctx *const flash
 	struct fmap *fmap;
 	const unsigned int chip_size = flashctx->chip->total_size * 1024;
 	const int sig_len = strlen(FMAP_SIGNATURE);
+	bool skip_unreadable_orig = flashctx->flags.skip_unreadable_regions;
 
 	if (rom_offset + len > flashctx->chip->total_size * 1024)
 		return 1;
@@ -206,6 +178,13 @@ static int fmap_bsearch_rom(struct fmap **fmap_out, struct flashctx *const flash
 		msg_gerr("Out of memory.\n");
 		goto _free_ret;
 	}
+
+	/*
+	 * Ignore unreadable regions when trying to locate the FMAP, in order
+	 * to avoid a large amount of false-error prints to stderr. Unreadable
+	 * regions have already reported so errors here are redundant.
+	 */
+	flashctx->flags.skip_unreadable_regions = true;
 
 	/*
 	 * For efficient operation, we start with the largest stride possible
@@ -264,6 +243,9 @@ static int fmap_bsearch_rom(struct fmap **fmap_out, struct flashctx *const flash
 		if (fmap_found)
 			break;
 	}
+
+	/* Restore original flag, since we're done searching */
+	flashctx->flags.skip_unreadable_regions = skip_unreadable_orig;
 
 	if (!fmap_found)
 		goto _free_ret;
@@ -327,9 +309,12 @@ int fmap_read_from_rom(struct fmap **fmap_out,
 	 * TODO: Since flashrom is often used with high-latency external
 	 * programmers we should not be overly aggressive with bsearch.
 	 */
-	ret = fmap_bsearch_rom(fmap_out, flashctx, rom_offset, len, 256);
+	size_t bsearch_len = (len / FMAP_BSEARCH_MIN_STRIDE) * strlen(FMAP_SIGNATURE);
+	init_progress(flashctx, FLASHROM_PROGRESS_READ, bsearch_len);
+	ret = fmap_bsearch_rom(fmap_out, flashctx, rom_offset, len, FMAP_BSEARCH_MIN_STRIDE);
 	if (ret) {
 		msg_gdbg("Binary search failed, trying linear search...\n");
+		init_progress(flashctx, FLASHROM_PROGRESS_READ, len);
 		ret = fmap_lsearch_rom(fmap_out, flashctx, rom_offset, len);
 	}
 

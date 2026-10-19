@@ -1,25 +1,19 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2016 secunet Security Networks AG
- * Copyright (C) 2018 Linaro Limited
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2016 secunet Security Networks AG
+ * SPDX-FileCopyrightText: 2018 Linaro Limited
  */
+
+
+#include "usbdev.h"
+
+#include "platform/string.h"
+#include "log.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
-#include <string.h>
-#include <libusb.h>
-#include "programmer.h"
 
 /*
  * Check whether we should filter the current device.

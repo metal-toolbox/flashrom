@@ -1,17 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2014 Google LLC.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2014 Google LLC.
  */
 
 /*
@@ -22,10 +13,11 @@
  */
 
 #include <stdlib.h>
-#include <string.h>
+#include "platform/string.h"
 
 #include "chipdrivers.h"
 #include "spi.h"
+#include "log.h"
 
 /*
  * RDAR and WRAR are supported on chips which have more than one set of status
@@ -291,7 +283,7 @@ int s25fs_block_erase_d8(struct flashctx *flash, unsigned int addr, unsigned int
 					s25fs_read_cr(flash, CR3NV_ADDR));
 
 			/* Restore CR3V when flashrom exits */
-			uint8_t *data = calloc(sizeof(uint8_t), 1);
+			uint8_t *data = calloc(1, sizeof(uint8_t));
 			if (!data) {
 				msg_cerr("Out of memory!\n");
 				return 1;
@@ -371,10 +363,8 @@ int probe_spi_big_spansion(struct flashctx *flash)
 	 *
 	 *     offset   value              meaning
 	 *       00h     01h      Manufacturer ID for Spansion
-	 *       01h     20h           128 Mb capacity
-	 *       01h     02h           256 Mb capacity
-	 *       02h     18h           128 Mb capacity
-	 *       02h     19h           256 Mb capacity
+	 *       01h      *       Memory interface type (02h, 20h, 40h, 60h)
+	 *       02h      *       Memory capacity (18h = 128 Mb, 19h = 256 Mb, 20h = 512 Mb)
 	 *       03h     4Dh       Full size of the RDID output (ignored)
 	 *       04h     00h       FS: 256-kB physical sectors
 	 *       04h     01h       FS: 64-kB physical sectors

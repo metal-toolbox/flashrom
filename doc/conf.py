@@ -3,7 +3,13 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import os
+import sys
+
+from pathlib import Path
+
+
+sys.path.append(str(Path('_ext').resolve()))
+
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -18,7 +24,8 @@ author = 'The flashrom authors'
 master_doc = 'index' # this is needed for old versions
 
 extensions = [
-    'sphinx.ext.todo'
+    'sphinx.ext.todo',
+    'flashrom_authors'
 ]
 
 #templates_path = ['_templates']
@@ -40,6 +47,8 @@ html_theme = 'alabaster'
 
 html_favicon = 'logo/flashrom_icon_color-32x32.ico'
 
+# This disables auto-converting -- to en-dash, which we don't want for classic_cli_manpage.html
+smartquotes = False
 
 # -- Options for manual page output --------------------------------------------
 man_make_section_directory = True

@@ -1,40 +1,42 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2004 Tyan Corp <yhlu@tyan.com>
- * Copyright (C) 2005-2008 coresystems GmbH
- * Copyright (C) 2008,2009,2010 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2004 Tyan Corp <yhlu@tyan.com>
+ * SPDX-FileCopyrightText: 2005-2008 coresystems GmbH
+ * SPDX-FileCopyrightText: 2008,2009,2010 Carl-Daniel Hailfinger
  */
 
-#include <errno.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <string.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <cli_classic.h>
+#include "platform/string.h"
+#include "platform/getopt.h"
 #include "flash.h"
 #include "flashchips.h"
 #include "fmap.h"
 #include "programmer.h"
 #include "libflashrom.h"
+#include "helpers.h"
+#include "log.h"
+#include "cli_output.h"
+#include "read_extended.h"
+#include <errno.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
+
+#if CONFIG_RPMC_ENABLED == 1
+#include "rpmc.h"
+#endif /* CONFIG_RPMC_ENABLED */
 
 enum {
 	OPTION_IFD = 0x0100,
 	OPTION_FMAP,
 	OPTION_FMAP_FILE,
+	OPTION_FMAP_VERIFY,
 	OPTION_FLASH_CONTENTS,
 	OPTION_FLASH_NAME,
 	OPTION_FLASH_SIZE,
@@ -45,21 +47,30 @@ enum {
 	OPTION_WP_DISABLE,
 	OPTION_WP_LIST,
 	OPTION_PROGRESS,
+	OPTION_SACRIFICE_RATIO,
+	OPTION_READ_REPEATED,
+#if CONFIG_RPMC_ENABLED == 1
+	OPTION_RPMC_READ_DATA,
+	OPTION_RPMC_WRITE_ROOT_KEY,
+	OPTION_RPMC_UPDATE_HMAC_KEY,
+	OPTION_RPMC_INCREMENT_COUNTER,
+	OPTION_RPMC_GET_COUNTER,
+	OPTION_RPMC_COUNTER_ADDRESS,
+	OPTION_RPMC_KEY_DATA,
+	OPTION_RPMC_KEY_FILE,
+#endif /* CONFIG_RPMC_ENABLED */
 };
 
 struct cli_options {
 	bool read_it, extract_it, write_it, erase_it, verify_it;
 	bool dont_verify_it, dont_verify_all;
 	bool list_supported;
-#if CONFIG_PRINT_WIKI == 1
-	bool list_supported_wiki;
-#endif
 	char *filename;
 
 	const struct programmer_entry *prog;
 	char *pparam;
 
-	bool ifd, fmap;
+	bool ifd, fmap, fmap_verify;
 	struct flashrom_layout *layout;
 	struct layout_include_args *include_args;
 	char *layoutfile;
@@ -76,27 +87,37 @@ struct cli_options {
 	char *logfile;
 	char *referencefile;
 	const char *chip_to_probe;
+	int sacrifice_ratio;
+	int read_repeated;
+
+#if CONFIG_RPMC_ENABLED == 1
+	bool rpmc_read_data;
+	bool rpmc_write_root_key;
+	bool rpmc_update_hmac_key;
+	bool rpmc_increment_counter;
+	bool rpmc_get_counter;
+	unsigned int rpmc_counter_address;
+	uint32_t rpmc_key_data, rpmc_previous_counter_value;
+	const char *rpmc_root_key_file;
+#endif /* CONFIG_RPMC_ENABLED */
 };
 
 static void cli_classic_usage(const char *name)
 {
 	printf("Usage: %s [-h|-R|-L|"
-#if CONFIG_PRINT_WIKI == 1
-	       "-z|"
-#endif
 	       "\n\t-p <programmername>[:<parameters>] [-c <chipname>]\n"
 	       "\t\t(--flash-name|--flash-size|\n"
-	       "\t\t [-E|-x|(-r|-w|-v) <file>]\n"
+	       "\t\t [-E|-x|(-r|-w|-v) [<file>]]\n"
 	       "\t\t [(-l <layoutfile>|--ifd| --fmap|--fmap-file <file>) [-i <region>[:<file>]]...]\n"
 	       "\t\t [-n] [-N] [-f])]\n"
 	       "\t[-V[V[V]]] [-o <logfile>]\n\n", name);
 
 	printf(" -h | --help                        print this help text\n"
 	       " -R | --version                     print version (release)\n"
-	       " -r | --read <file>                 read flash and save to <file>\n"
-	       " -w | --write (<file>|-)            write <file> or the content provided\n"
+	       " -r | --read [<file>]               read flash and save to <file>\n"
+	       " -w | --write [<file>|-]            write <file> or the content provided\n"
 	       "                                    on the standard input to flash\n"
-	       " -v | --verify (<file>|-)           verify flash against <file>\n"
+	       " -v | --verify [<file>|-]           verify flash against <file>\n"
 	       "                                    or the content provided on the standard input\n"
 	       " -E | --erase                       erase flash memory\n"
 	       " -V | --verbose                     more verbose output\n"
@@ -117,6 +138,7 @@ static void cli_classic_usage(const char *name)
 	       "      --flash-size                  read out the detected flash size\n"
 	       "      --fmap                        read ROM layout from fmap embedded in ROM\n"
 	       "      --fmap-file <fmapfile>        read ROM layout from fmap in <fmapfile>\n"
+	       "      --fmap-verify                 read ROM layout from fmap and verify it matches file fmap\n"
 	       "      --ifd                         read layout from an Intel Firmware Descriptor\n"
 	       " -i | --include <region>[:<file>]   only read/write image <region> from layout\n"
 	       "                                    (optionally with data from <file>)\n"
@@ -124,17 +146,42 @@ static void cli_classic_usage(const char *name)
 	       " -o | --output <logfile>            log output to <logfile>\n"
 	       "      --flash-contents <ref-file>   assume flash contents to be <ref-file>\n"
 	       " -L | --list-supported              print supported devices\n"
-#if CONFIG_PRINT_WIKI == 1
-	       " -z | --list-supported-wiki         print supported devices in wiki syntax\n"
-#endif
 	       "      --progress                    show progress percentage on the standard output\n"
+	       "      --sacrifice-ratio <ratio>     Fraction (as a percentage, 0-50) of an erase block\n"
+	       "                                    that may be erased even if unmodified. Larger values\n"
+	       "				    may complete programming faster, but may also hurt\n"
+	       "				    chip longevity by erasing cells unnecessarily.\n"
+	       "				    Default is 0, tradeoff is the speed of programming\n"
+	       "                                    operation VS the longevity of the chip. Default is\n"
+	       "                                    longevity.\n"
+	       "                                    DANGEROUS! It wears your chip faster!\n"
+	       "      --read-repeated[=<count>] [<file>]\n"
+	       "                                    read flash <count> times (default: 3,\n"
+	       "                                    min: 3, max: 100) and use majority\n"
+	       "                                    voting to detect unstable connections.\n"
+	       "                                    Reports X/N reads matched. Saves\n"
+	       "                                    majority content to <file> if given.\n"
+#if CONFIG_RPMC_ENABLED == 1
+	       "RPMC COMMANDS\n"
+	       "      --get-rpmc-status             read the extended status\n"
+	       "      --write-root-key              write the root key register\n"
+	       "      --update-hmac-key             update the hmac key register\n"
+	       "      --increment-counter <current>\n"
+	       "                                    increment rpmc counter\n"
+	       "      --get-counter                 get rpmc counter\n"
+	       "RPMC OPTIONS\n"
+	       "      --counter-address <address>   counter address (default: 0)\n"
+	       "      --rpmc-root-key <keyfile>     rpmc root key file\n"
+	       "      --key-data <value>            hex number to use as key data (default: 0)\n"
+#endif /* CONFIG_RPMC_ENABLED */
+	       "PROGRAMMER SELECTION OPTIONS\n"
 	       " -p | --programmer <name>[:<param>] specify the programmer device. One of\n");
 	list_programmers_linebreak(4, 80, 0);
-	printf(".\n\nYou can specify one of -h, -R, -L, "
-#if CONFIG_PRINT_WIKI == 1
-	         "-z, "
-#endif
-	         "-E, -r, -w, -v or no operation.\n"
+	printf(".\n\nYou can specify one of -h, -R, -L, -E, -r, -w, -v"
+#if CONFIG_RPMC_ENABLED == 1
+		 ", a RPMC command"
+#endif /* CONFIG_RPMC_ENABLED */
+		 " or no operation.\n"
 	       "If no operation is specified, flashrom will only probe for flash chips.\n");
 }
 
@@ -177,26 +224,23 @@ static bool check_file(FILE *file)
 
 static int parse_wp_range(unsigned int *start, unsigned int *len)
 {
-	char *endptr = NULL, *token = NULL;
+	char *delim = NULL;
 
 	if (!optarg) {
 		msg_gerr("Error: No wp-range values provided\n");
 		return -1;
 	}
 
-	token = strtok(optarg, ",");
-	if (!token) {
-		msg_gerr("Error: Invalid wp-range argument format\n");
+	if ((delim = strchr(optarg, ',')) != strrchr(optarg, ',') ||
+			delim == NULL ||
+			delim == optarg ||
+			*(delim + 1) == '\0') {
+		msg_gerr("Error: Invalid wp-range argument format. Valid format is --wp-range <start>,<end>\n");
 		return -1;
 	}
-	*start = strtoul(token, &endptr, 0);
 
-	token = strtok(NULL, ",");
-	if (!token) {
-		msg_gerr("Error: Invalid wp-range argument format\n");
-		return -1;
-	}
-	*len = strtoul(token, &endptr, 0);
+	*start = strtoul(optarg, NULL, 0);
+	*len = strtoul(delim+1, NULL, 0);
 
 	return 0;
 }
@@ -407,6 +451,110 @@ static int wp_cli(
 	return 0;
 }
 
+#if CONFIG_RPMC_ENABLED == 1
+static int rpmc_cli(struct flashctx *flash,
+		    const char *const key_file,
+		    const uint32_t key_data,
+		    const unsigned int counter_address,
+		    const uint32_t previous_counter,
+		    const bool op_read_data,
+		    const bool op_write_root_key,
+		    const bool op_update_hmac_key,
+		    const bool op_increment_counter,
+		    const bool op_get_counter)
+{
+	if (op_write_root_key) {
+		enum rpmc_result result = rpmc_write_root_key(flash, key_file, counter_address);
+		if (result != RPMC_SUCCESS) {
+			msg_gerr("Failed to write root key\n%s", rpmc_describe_result(result));
+			return 1;
+		}
+
+		msg_ginfo("Successfully wrote new root key for counter %u.\n", counter_address);
+	}
+
+	if (op_update_hmac_key) {
+		enum rpmc_result result = rpmc_update_hmac_key(flash,
+							       key_file,
+							       key_data,
+							       counter_address);
+		if (result != RPMC_SUCCESS) {
+			msg_gerr("Failed to update hmac key\n%s", rpmc_describe_result(result));
+			return 1;
+		}
+
+		msg_ginfo("Successfully updated hmac key to 0x%08x for counter %u.\n",
+			  key_data,
+			  counter_address);
+	}
+
+	if (op_increment_counter) {
+		enum rpmc_result result = rpmc_increment_counter(flash,
+								 key_file,
+								 key_data,
+								 counter_address,
+								 previous_counter);
+		if (result != RPMC_SUCCESS) {
+			msg_gerr("Failed to increment the counter\n%s", rpmc_describe_result(result));
+			return 1;
+		}
+
+		msg_ginfo("Successfully incremented counter %u.\n", counter_address);
+	}
+
+	if (op_get_counter) {
+		uint32_t counter_value;
+		enum rpmc_result result = rpmc_get_monotonic_counter(flash,
+								     key_file,
+								     key_data,
+								     counter_address,
+								     &counter_value);
+		if (result != RPMC_SUCCESS) {
+			msg_gerr("Failed to get the counter value\n%s", rpmc_describe_result(result));
+			return 1;
+		}
+
+		msg_ginfo("Returned counter value %u for counter %u\n",	counter_value, counter_address);
+	}
+
+	if (op_read_data) {
+		struct rpmc_status_register status;
+		enum rpmc_result result = rpmc_read_data(flash, &status);
+		if (result != RPMC_SUCCESS) {
+			msg_gerr("Failed to read read rpmc data\n%s", rpmc_describe_result(result));
+			return 1;
+		}
+
+		msg_ginfo("Reading rpmc data returned:\n");
+
+		char bin_buffer[9];
+		uint8_t status_bits = status.status;
+		for (int i = 7; i >= 0; i--){
+			bin_buffer[i] = '0' + (status_bits & 1);
+			status_bits = status_bits >> 1;
+		}
+		bin_buffer[8] = '\0';
+		msg_ginfo("Extended Status: 0b%s\n", bin_buffer);
+
+		msg_ginfo("Tag:\n");
+		for (size_t i = 0; i < RPMC_TAG_LENGTH; i++){
+			msg_ginfo("0x%02x ", status.tag[i]);
+		}
+		msg_ginfo("\n");
+
+		msg_ginfo("Counter: %u\n", status.counter_data);
+
+		msg_ginfo("Signature:\n");
+		for (size_t i = 0; i < RPMC_SIGNATURE_LENGTH; i++){
+			msg_ginfo("0x%02x ", status.signature[i]);
+		}
+		msg_ginfo("\n");
+	}
+
+	return 0;
+}
+#endif /* CONFIG_RPMC_ENABLED */
+
 /**
  * @brief Reads content to buffer from one or more files.
  *
@@ -471,16 +619,66 @@ static int write_buf_to_include_args(const struct flashrom_layout *const layout,
 	return 0;
 }
 
+static char *get_optional_filename(char *argv[])
+{
+	char *filename = NULL;
+
+	/* filename was supplied in optarg (i.e. -rfilename) */
+	if (optarg != NULL)
+		filename = strdup(optarg);
+	/* filename is on optind if it is not another flag (i.e. -r filename)
+	 * - is treated as stdin, so we still strdup in this case
+	 */
+	else if (optarg == NULL && argv[optind] != NULL &&
+		 (argv[optind][0] != '-' || argv[optind][1] == '\0'))
+		filename = strdup(argv[optind++]);
+
+	return filename;
+}
+
+/**
+ * @brief Allocate a chip-sized zeroed buffer.
+ *
+ * @param flash  Flash context used to determine buffer size.
+ * @return Pointer to zeroed buffer, or NULL on failure (already logged).
+ */
+static unsigned char *alloc_flashsize_buf(struct flashctx *const flash)
+{
+	size_t size = flashrom_flash_getsize(flash);
+	unsigned char *buf = calloc(size, 1);
+	if (!buf)
+		msg_gerr("Memory allocation failed!\n");
+	return buf;
+}
+
+static int do_read_repeated(struct flashctx *const flash, int count, const char *const filename)
+{
+	unsigned char *result_buf = NULL;
+	size_t result_size = 0;
+	int ret;
+
+	ret = read_repeated(flash, count, &result_buf, &result_size);
+	if (!ret) {
+		if (write_buf_to_include_args(get_layout(flash), result_buf)) {
+			ret = 1;
+		} else if (filename) {
+			ret = write_buf_to_file(result_buf, result_size, filename);
+			if (!ret)
+				msg_ginfo("Saved flash contents to \"%s\".\n", filename);
+		}
+	}
+	flashrom_data_free(result_buf);
+	return ret;
+}
+
 static int do_read(struct flashctx *const flash, const char *const filename)
 {
 	int ret;
 
 	unsigned long size = flashrom_flash_getsize(flash);
-	unsigned char *buf = calloc(size, sizeof(unsigned char));
-	if (!buf) {
-		msg_gerr("Memory allocation failed!\n");
+	unsigned char *buf = alloc_flashsize_buf(flash);
+	if (!buf)
 		return 1;
-	}
 
 	ret = flashrom_image_read(flash, buf, size);
 	if (ret > 0)
@@ -509,17 +707,17 @@ static int do_write(struct flashctx *const flash, const char *const filename, co
 	const size_t flash_size = flashrom_flash_getsize(flash);
 	int ret = 1;
 
-	uint8_t *const newcontents = malloc(flash_size);
-	uint8_t *const refcontents = referencefile ? malloc(flash_size) : NULL;
+	uint8_t *const newcontents = alloc_flashsize_buf(flash);
+	uint8_t *const refcontents = referencefile ? alloc_flashsize_buf(flash) : NULL;
 
-	if (!newcontents || (referencefile && !refcontents)) {
-		msg_gerr("Out of memory!\n");
+	if (!newcontents || (referencefile && !refcontents))
 		goto _free_ret;
-	}
 
 	/* Read '-w' argument first... */
-	if (read_buf_from_file(newcontents, flash_size, filename))
-		goto _free_ret;
+	if (filename) {
+		if (read_buf_from_file(newcontents, flash_size, filename))
+			goto _free_ret;
+	}
 	/*
 	 * ... then update newcontents with contents from files provided to '-i'
 	 * args if needed.
@@ -545,15 +743,15 @@ static int do_verify(struct flashctx *const flash, const char *const filename)
 	const size_t flash_size = flashrom_flash_getsize(flash);
 	int ret = 1;
 
-	uint8_t *const newcontents = malloc(flash_size);
-	if (!newcontents) {
-		msg_gerr("Out of memory!\n");
+	uint8_t *const newcontents = alloc_flashsize_buf(flash);
+	if (!newcontents)
 		goto _free_ret;
-	}
 
 	/* Read '-v' argument first... */
-	if (read_buf_from_file(newcontents, flash_size, filename))
-		goto _free_ret;
+	if (filename) {
+		if (read_buf_from_file(newcontents, flash_size, filename))
+			goto _free_ret;
+	}
 	/*
 	 * ... then update newcontents with contents from files provided to '-i'
 	 * args if needed.
@@ -628,12 +826,12 @@ static void parse_options(int argc, char **argv, const char *optstring,
 		switch (opt) {
 		case 'r':
 			cli_classic_validate_singleop(&operation_specified);
-			options->filename = strdup(optarg);
+			options->filename = get_optional_filename(argv);
 			options->read_it = true;
 			break;
 		case 'w':
 			cli_classic_validate_singleop(&operation_specified);
-			options->filename = strdup(optarg);
+			options->filename = get_optional_filename(argv);
 			options->write_it = true;
 			break;
 		case 'v':
@@ -642,7 +840,7 @@ static void parse_options(int argc, char **argv, const char *optstring,
 			if (options->dont_verify_it) {
 				cli_classic_abort_usage("--verify and --noverify are mutually exclusive. Aborting.\n");
 			}
-			options->filename = strdup(optarg);
+			options->filename = get_optional_filename(argv);
 			options->verify_it = true;
 			break;
 		case 'n':
@@ -691,7 +889,7 @@ static void parse_options(int argc, char **argv, const char *optstring,
 			break;
 		case OPTION_FMAP_FILE:
 			if (options->fmap)
-				cli_classic_abort_usage("Error: --fmap or --fmap-file specified "
+				cli_classic_abort_usage("Error: --fmap, --fmap-file, or --fmap-verify specified "
 					"more than once. Aborting.\n");
 			if (options->ifd)
 				cli_classic_abort_usage("Error: --fmap-file and --ifd both specified. Aborting.\n");
@@ -702,13 +900,26 @@ static void parse_options(int argc, char **argv, const char *optstring,
 			break;
 		case OPTION_FMAP:
 			if (options->fmap)
-				cli_classic_abort_usage("Error: --fmap or --fmap-file specified "
+				cli_classic_abort_usage("Error: --fmap, --fmap-file, or --fmap-verify specified "
 					"more than once. Aborting.\n");
 			if (options->ifd)
 				cli_classic_abort_usage("Error: --fmap and --ifd both specified. Aborting.\n");
 			if (options->layoutfile)
 				cli_classic_abort_usage("Error: --layout and --fmap both specified. Aborting.\n");
 			options->fmap = true;
+			break;
+		case OPTION_FMAP_VERIFY:
+			if (options->fmap)
+				cli_classic_abort_usage("Error: --fmap, --fmap-file, or --fmap-verify specified "
+					"more than once. Aborting.\n");
+			if (options->ifd)
+				cli_classic_abort_usage("Error: --fmap-verify and --ifd both specified. Aborting.\n");
+			if (options->layoutfile)
+				cli_classic_abort_usage("Error: --fmap-verify and --layout both specified. Aborting.\n");
+			if (options->read_it || options->verify_it)
+				cli_classic_abort_usage("Error: --fmap-verify cannot be used with read or verify operations. Aborting.\n");
+			options->fmap = true;
+			options->fmap_verify = true;
 			break;
 		case 'i':
 			if (register_include_arg(&options->include_args, optarg))
@@ -753,15 +964,6 @@ static void parse_options(int argc, char **argv, const char *optstring,
 		case 'L':
 			cli_classic_validate_singleop(&operation_specified);
 			options->list_supported = true;
-			break;
-		case 'z':
-#if CONFIG_PRINT_WIKI == 1
-			cli_classic_validate_singleop(&operation_specified);
-			options->list_supported_wiki = true;
-#else
-			cli_classic_abort_usage("Error: Wiki output was not "
-					"compiled in. Aborting.\n");
-#endif
 			break;
 		case 'p':
 			if (options->prog != NULL) {
@@ -831,6 +1033,52 @@ static void parse_options(int argc, char **argv, const char *optstring,
 		case OPTION_PROGRESS:
 			options->show_progress = true;
 			break;
+		case OPTION_SACRIFICE_RATIO:
+			/* It is okay to convert invalid input to 0. */
+			options->sacrifice_ratio = atoi(optarg);
+			break;
+		case OPTION_READ_REPEATED:
+			cli_classic_validate_singleop(&operation_specified);
+			if (optarg) {
+				char *end;
+				long val = strtol(optarg, &end, 10);
+				if (*end != '\0' || val < 3 || val > 100) {
+					msg_gerr("Error: --read-repeated count must be between 3 and 100.\n");
+					cli_classic_abort_usage(NULL);
+				}
+				options->read_repeated = (int)val;
+			} else {
+				options->read_repeated = 3;
+			}
+			options->filename = get_optional_filename(argv);
+			break;
+#if CONFIG_RPMC_ENABLED == 1
+		case OPTION_RPMC_READ_DATA:
+			options->rpmc_read_data = true;
+			break;
+		case OPTION_RPMC_WRITE_ROOT_KEY:
+			options->rpmc_write_root_key = true;
+			break;
+		case OPTION_RPMC_UPDATE_HMAC_KEY:
+			options->rpmc_update_hmac_key = true;
+			break;
+		case OPTION_RPMC_INCREMENT_COUNTER:
+			options->rpmc_increment_counter = true;
+			options->rpmc_previous_counter_value = strtoumax(optarg, NULL, 10);
+			break;
+		case OPTION_RPMC_GET_COUNTER:
+			options->rpmc_get_counter = true;
+			break;
+		case OPTION_RPMC_COUNTER_ADDRESS:
+			options->rpmc_counter_address = strtoumax(optarg, NULL, 10);
+			break;
+		case OPTION_RPMC_KEY_DATA:
+			options->rpmc_key_data = strtoumax(optarg, NULL, 16);
+			break;
+		case OPTION_RPMC_KEY_FILE:
+			options->rpmc_root_key_file = strdup(optarg);
+			break;
+#endif /* CONFIG_RPMC_ENABLED */
 		default:
 			cli_classic_abort_usage(NULL);
 			break;
@@ -857,21 +1105,27 @@ static void free_options(struct cli_options *options)
 int main(int argc, char *argv[])
 {
 	const struct flashchip *chip = NULL;
-	/* Probe for up to eight flash chips. */
-	struct flashctx flashes[8] = {{0}};
-	struct flashctx *fill_flash;
 	char *tempstr = NULL;
-	int startchip = -1, chipcount = 0;
 	int i, j;
 	int ret = 0;
+	int all_matched_count = 0;
+	const char **all_matched_names = NULL;
+	time_t time_start = 0, time_end = 0;
+
+	struct flashctx *context = NULL; /* holds the active detected chip and other info */
+	ret = flashrom_create_context(&context);
+	if (ret) {
+		msg_gerr("Failed to allocate flash context. Aborting");
+		return 1;
+	}
 
 	struct cli_options options = { 0 };
-	static const char optstring[] = "r:Rw:v:nNVEfc:l:i:p:Lzho:x";
+	static const char optstring[] = "r::Rw::v::nNVEfc:l:i:p:Lzho:x";
 	static const struct option long_options[] = {
-		{"read",		1, NULL, 'r'},
-		{"write",		1, NULL, 'w'},
+		{"read",		2, NULL, 'r'},
+		{"write",		2, NULL, 'w'},
 		{"erase",		0, NULL, 'E'},
-		{"verify",		1, NULL, 'v'},
+		{"verify",		2, NULL, 'v'},
 		{"noverify",		0, NULL, 'n'},
 		{"noverify-all",	0, NULL, 'N'},
 		{"extract",		0, NULL, 'x'},
@@ -882,6 +1136,7 @@ int main(int argc, char *argv[])
 		{"ifd",			0, NULL, OPTION_IFD},
 		{"fmap",		0, NULL, OPTION_FMAP},
 		{"fmap-file",		1, NULL, OPTION_FMAP_FILE},
+		{"fmap-verify",		0, NULL, OPTION_FMAP_VERIFY},
 		{"image",		1, NULL, 'i'}, // (deprecated): back compatibility.
 		{"include",		1, NULL, 'i'},
 		{"flash-contents",	1, NULL, OPTION_FLASH_CONTENTS},
@@ -895,12 +1150,23 @@ int main(int argc, char *argv[])
 		{"wp-enable",		0, NULL, OPTION_WP_ENABLE},
 		{"wp-disable",		0, NULL, OPTION_WP_DISABLE},
 		{"list-supported",	0, NULL, 'L'},
-		{"list-supported-wiki",	0, NULL, 'z'},
 		{"programmer",		1, NULL, 'p'},
 		{"help",		0, NULL, 'h'},
 		{"version",		0, NULL, 'R'},
 		{"output",		1, NULL, 'o'},
 		{"progress",		0, NULL, OPTION_PROGRESS},
+		{"sacrifice-ratio",	1, NULL, OPTION_SACRIFICE_RATIO},
+		{"read-repeated",	2, NULL, OPTION_READ_REPEATED},
+#if CONFIG_RPMC_ENABLED == 1
+		{"get-rpmc-status",	0, NULL, OPTION_RPMC_READ_DATA},
+		{"write-root-key",	0, NULL, OPTION_RPMC_WRITE_ROOT_KEY},
+		{"update-hmac-key",	0, NULL, OPTION_RPMC_UPDATE_HMAC_KEY},
+		{"increment-counter",	1, NULL, OPTION_RPMC_INCREMENT_COUNTER},
+		{"get-counter",		0, NULL, OPTION_RPMC_GET_COUNTER},
+		{"counter-address",	1, NULL, OPTION_RPMC_COUNTER_ADDRESS},
+		{"key-data",		1, NULL, OPTION_RPMC_KEY_DATA},
+		{"rpmc-root-key",	1, NULL, OPTION_RPMC_KEY_FILE},
+#endif /* CONFIG_RPMC_ENABLED */
 		{NULL,			0, NULL, 0},
 	};
 
@@ -911,21 +1177,20 @@ int main(int argc, char *argv[])
 	 * chip when a flash device gets opened with fd 1 or 2.
 	 */
 	if (check_file(stdout) && check_file(stderr)) {
+		/* This is maximum log level for callback to be invoked,
+		 * and cli wants callback to be always invoked. */
+		flashrom_set_log_level(FLASHROM_MSG_SPEW);
 		flashrom_set_log_callback(&flashrom_print_cb);
 	}
 
 	print_version();
 	print_banner();
 
-	/* FIXME: Delay calibration should happen in programmer code. */
-	if (flashrom_init(1))
-		exit(1);
-
 	setbuf(stdout, NULL);
 
 	parse_options(argc, argv, optstring, long_options, &options);
 
-	if ((options.read_it | options.write_it | options.verify_it) && check_filename(options.filename, "image"))
+	if (options.filename && check_filename(options.filename, "image"))
 		cli_classic_abort_usage(NULL);
 	if (options.layoutfile && check_filename(options.layoutfile, "layout"))
 		cli_classic_abort_usage(NULL);
@@ -937,13 +1202,6 @@ int main(int argc, char *argv[])
 		cli_classic_abort_usage(NULL);
 	if (options.logfile && open_logfile(options.logfile))
 		cli_classic_abort_usage(NULL);
-
-#if CONFIG_PRINT_WIKI == 1
-	if (options.list_supported_wiki) {
-		print_supported_wiki();
-		goto out;
-	}
-#endif
 
 	if (options.list_supported) {
 		if (print_supported())
@@ -1005,6 +1263,12 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* FIXME: Delay calibration should happen in programmer code. */
+	if (flashrom_init(1))
+		exit(1);
+
+	time(&time_start);
+
 	if (programmer_init(options.prog, options.pparam)) {
 		msg_perr("Error: Programmer initialization failed.\n");
 		ret = 1;
@@ -1014,26 +1278,26 @@ int main(int argc, char *argv[])
 	msg_pdbg("The following protocols are supported: %s.\n", tempstr ? tempstr : "?");
 	free(tempstr);
 
-	for (j = 0; j < registered_master_count; j++) {
-		startchip = 0;
-		while (chipcount < (int)ARRAY_SIZE(flashes)) {
-			startchip = probe_flash(&registered_masters[j], startchip, &flashes[chipcount], 0, options.chip_to_probe);
-			if (startchip == -1)
-				break;
-			chipcount++;
-			startchip++;
-		}
+	all_matched_count = flashrom_flash_probe_v2(context, &all_matched_names,
+                                NULL, options.chip_to_probe);
+	if (all_matched_count == -1) {
+		/* -1 is the ret code which means "something went wrong".
+		 * Multiple match and no match are different ret codes.
+		 * More details about the error were printed during actual probing. */
+		msg_cerr("Error: probing failed.\n");
+		ret = 1;
+		goto out_shutdown;
 	}
 
-	if (chipcount > 1) {
+	if (all_matched_count > 1) {
 		msg_cinfo("Multiple flash chip definitions match the detected chip(s): \"%s\"",
-			  flashes[0].chip->name);
-		for (i = 1; i < chipcount; i++)
-			msg_cinfo(", \"%s\"", flashes[i].chip->name);
+			  context->chip->name);
+		for (int ind = 1; ind < all_matched_count; ind++)
+			msg_cinfo(", \"%s\"", all_matched_names[ind]);
 		msg_cinfo("\nPlease specify which chip definition to use with the -c <chipname> option.\n");
 		ret = 1;
 		goto out_shutdown;
-	} else if (!chipcount) {
+	} else if (!all_matched_count) {
 		msg_cinfo("No EEPROM/flash device found.\n");
 		if (!options.force || !options.chip_to_probe) {
 			msg_cinfo("Note: flashrom can never write if the flash chip isn't found "
@@ -1058,49 +1322,46 @@ int main(int argc, char *argv[])
 			if (compatible_masters > 1)
 				msg_cinfo("More than one compatible controller found for the requested flash "
 					  "chip, using the first one.\n");
+
+			int force_probe_ret = ERROR_FLASHROM_PROBE_NO_CHIPS_FOUND;
 			for (j = 0; j < registered_master_count; j++) {
 				mst = &registered_masters[j];
-				startchip = probe_flash(mst, 0, &flashes[0], 1, options.chip_to_probe);
-				if (startchip != -1)
+				force_probe_ret = probe_flash(mst, 0, context, 1, options.chip_to_probe);
+				if (force_probe_ret >= 0)
 					break;
 			}
-			if (startchip == -1) {
+			if (force_probe_ret < 0) {
 				// FIXME: This should never happen! Ask for a bug report?
 				msg_cinfo("Probing for flash chip '%s' failed.\n", options.chip_to_probe);
 				ret = 1;
 				goto out_shutdown;
 			}
 			msg_cinfo("Please note that forced reads most likely contain garbage.\n");
-			flashrom_flag_set(&flashes[0], FLASHROM_FLAG_FORCE, options.force);
-			ret = do_read(&flashes[0], options.filename);
-			free(flashes[0].chip);
+			flashrom_flag_set(context, FLASHROM_FLAG_FORCE, options.force);
+			ret = do_read(context, options.filename);
+			free(context->chip);
 			goto out_shutdown;
 		}
 		ret = 1;
 		goto out_shutdown;
 	} else if (!options.chip_to_probe) {
 		/* repeat for convenience when looking at foreign logs */
-		tempstr = flashbuses_to_text(flashes[0].chip->bustype);
+		tempstr = flashbuses_to_text(context->chip->bustype);
 		msg_gdbg("Found %s flash chip \"%s\" (%d kB, %s).\n",
-			 flashes[0].chip->vendor, flashes[0].chip->name, flashes[0].chip->total_size,
+			 context->chip->vendor, context->chip->name, context->chip->total_size,
 			 tempstr ? tempstr : "?");
 		free(tempstr);
 	}
 
-	fill_flash = &flashes[0];
-
-	unsigned int progress_user_data[FLASHROM_PROGRESS_NR];
-	struct flashrom_progress progress_state = {
-		 .user_data = progress_user_data
-	};
+	struct cli_progress cli_progress = {0};
 	if (options.show_progress)
-		flashrom_set_progress_callback(fill_flash, &flashrom_progress_cb, &progress_state);
+		flashrom_set_progress_callback_v2(context, &flashrom_progress_cb, &cli_progress);
 
-	print_chip_support_status(fill_flash->chip);
+	print_chip_support_status(context->chip);
 
-	unsigned int limitexceeded = count_max_decode_exceedings(fill_flash, &max_rom_decode);
+	unsigned int limitexceeded = count_max_decode_exceedings(context, &max_rom_decode);
 	if (limitexceeded > 0 && !options.force) {
-		enum chipbustype commonbuses = fill_flash->mst->buses_supported & fill_flash->chip->bustype;
+		enum chipbustype commonbuses = context->mst->buses_supported & context->chip->bustype;
 
 		/* Sometimes chip and programmer have more than one bus in common,
 		 * and the limit is not exceeded on all buses. Tell the user. */
@@ -1118,9 +1379,18 @@ int main(int argc, char *argv[])
 		options.set_wp_range || options.set_wp_region || options.enable_wp ||
 		options.disable_wp || options.print_wp_status || options.print_wp_ranges;
 
+	const bool any_rpmc_op =
+#if CONFIG_RPMC_ENABLED == 1
+		options.rpmc_read_data || options.rpmc_write_root_key || options.rpmc_update_hmac_key ||
+		options.rpmc_increment_counter || options.rpmc_get_counter;
+#else
+		false;
+#endif /* CONFIG_RPMC_ENABLED */
+
 	const bool any_op = options.read_it || options.write_it || options.verify_it ||
 		options.erase_it || options.flash_name || options.flash_size ||
-		options.extract_it || any_wp_op;
+		options.extract_it || any_wp_op || any_rpmc_op ||
+		options.read_repeated > 0;
 
 	if (!any_op) {
 		msg_ginfo("No operations were specified.\n");
@@ -1138,11 +1408,69 @@ int main(int argc, char *argv[])
 		goto out_shutdown;
 	}
 
+	if (options.read_repeated > 0 &&
+	    (options.read_it || options.write_it || options.erase_it || options.verify_it)) {
+		msg_gerr("Error: --read-repeated cannot be combined with read, write, erase, or verify.\n");
+		ret = 1;
+		goto out_shutdown;
+	}
+
+	/*
+	 * Common rules for -r/-w/-v syntax parsing:
+	 *
+	 * - If no filename is specified at all, quit.
+	 *
+	 * - If a file is specified for -r/-w/-v and no files are specified with
+	 *   -i args (or -i is not used), then that file will be used for reading/
+	 *   writing/verifying the entire ROM.
+	 *
+	 * - If no filename is specified for -r/-w/-v, but files are specified
+	 *   for -i, then the number of file arguments for -i options must be
+	 *   equal to the total number of -i options.
+	 *
+	 * Rules for reading:
+	 *
+	 * - If files are specified for -i args but not -r, do partial reads for
+	 *   each -i arg, creating a new file for each region. Each -i option
+	 *   must specify a filename.
+	 *
+	 * - If filenames are specified for -r and -i args, then:
+	 *     - Do partial read for each -i arg, creating a new file for
+	 *       each region where a filename is provided (-i region:filename).
+	 *     - Create a ROM-sized file with partially filled content. For each
+	 *       -i arg, fill the corresponding offset with content from ROM.
+	 *
+	 * Rules for writing and verifying:
+	 *
+	 * - If files are specified for both -w/-v and -i args, -i files take
+	 *   priority (files specified for -w/-v are unused).
+	 *
+	 * - If files are specified for -i args but not -w, do partial writes
+	 *   for each -i arg. Likewise for -v and -i args. All -i args must
+	 *   supply a filename. Any omission is considered ambiguous.
+	 *
+	 * - Regions with a filename associated must not overlap. This is also
+	 *   considered ambiguous. Note: This is checked later since it requires
+	 *   processing the layout/fmap first.
+	 */
+	if ((options.read_it | options.write_it | options.verify_it) && !options.filename) {
+		if (!options.include_args) {
+			msg_gerr("Error: No image file specified.\n");
+			ret = 1;
+			goto out_shutdown;
+		}
+
+		if (check_include_args_filename(options.include_args)) {
+			ret = 1;
+			goto out_shutdown;
+		}
+	}
+
 	if (options.flash_name) {
-		if (fill_flash->chip->vendor && fill_flash->chip->name) {
+		if (context->chip->vendor && context->chip->name) {
 			printf("vendor=\"%s\" name=\"%s\"\n",
-				fill_flash->chip->vendor,
-				fill_flash->chip->name);
+				context->chip->vendor,
+				context->chip->name);
 		} else {
 			ret = -1;
 		}
@@ -1150,11 +1478,19 @@ int main(int argc, char *argv[])
 	}
 
 	if (options.flash_size) {
-		printf("%zu\n", flashrom_flash_getsize(fill_flash));
+		printf("%zu\n", flashrom_flash_getsize(context));
 		goto out_shutdown;
 	}
 
-	if (options.ifd && (flashrom_layout_read_from_ifd(&options.layout, fill_flash, NULL, 0) ||
+	if (options.sacrifice_ratio) {
+		if (options.sacrifice_ratio < 0 || options.sacrifice_ratio > 50) {
+			msg_ginfo("Invalid input of sacrifice ratio, valid 0-50. Fallback to default value 0.\n");
+			options.sacrifice_ratio = 0;
+		}
+		context->sacrifice_ratio = options.sacrifice_ratio;
+	}
+
+	if (options.ifd && (flashrom_layout_read_from_ifd(&options.layout, context, NULL, 0) ||
 			   process_include_args(options.layout, options.include_args))) {
 		ret = 1;
 		goto out_shutdown;
@@ -1179,20 +1515,63 @@ int main(int argc, char *argv[])
 			goto out_shutdown;
 		}
 
-		if (flashrom_layout_read_fmap_from_buffer(&options.layout, fill_flash, fmapfile_buffer, fmapfile_size) ||
+		if (flashrom_layout_read_fmap_from_buffer(&options.layout, context, fmapfile_buffer, fmapfile_size) ||
 		    process_include_args(options.layout, options.include_args)) {
 			ret = 1;
 			free(fmapfile_buffer);
 			goto out_shutdown;
 		}
 		free(fmapfile_buffer);
-	} else if (options.fmap && (flashrom_layout_read_fmap_from_rom(&options.layout, fill_flash, 0,
-				flashrom_flash_getsize(fill_flash)) ||
-				process_include_args(options.layout, options.include_args))) {
-		ret = 1;
-		goto out_shutdown;
+	} else if (options.fmap) {
+		/* Read layout from ROM fmap */
+		if (flashrom_layout_read_fmap_from_rom(&options.layout, context, 0,
+				flashrom_flash_getsize(context)) ||
+				process_include_args(options.layout, options.include_args)) {
+			ret = 1;
+			goto out_shutdown;
+		}
+		if (options.fmap_verify) {
+			struct flashrom_layout *file_layout = NULL;
+			struct stat s;
+			if (stat(options.filename, &s) != 0) {
+				msg_gerr("Failed to stat the file \"%s\"\n", options.filename);
+				ret = 1;
+				goto out_release;
+			}
+
+			size_t fmapfile_size = s.st_size;
+			uint8_t *file_buffer = malloc(fmapfile_size);
+			if (!file_buffer) {
+				ret = 1;
+				goto out_release;
+			}
+
+			if (read_buf_from_file(file_buffer, fmapfile_size, options.filename)) {
+				ret = 1;
+				free(file_buffer);
+				goto out_release;
+			}
+			/* Read layout from file fmap */
+			if (flashrom_layout_read_fmap_from_buffer(&file_layout, context, file_buffer,
+					flashrom_flash_getsize(context)) ||
+					process_include_args(file_layout, options.include_args)) {
+				ret = 1;
+				free(file_buffer);
+				goto out_release;
+			}
+			free(file_buffer);
+			/* compare the two layouts */
+			if (flashrom_layout_compare(options.layout, file_layout)) {
+				msg_cerr("FMAP layouts do not match! Aborting.\n");
+				flashrom_layout_release(file_layout);
+				ret = 1;
+				goto out_release;
+			}
+			flashrom_layout_release(file_layout);
+			msg_cinfo("FMAP layouts match.\n");
+		}
 	}
-	flashrom_layout_set(fill_flash, options.layout);
+	flashrom_layout_set(context, options.layout);
 
 	if (any_wp_op) {
 		if (options.set_wp_region && options.wp_region) {
@@ -1210,7 +1589,7 @@ int main(int argc, char *argv[])
 			options.set_wp_range = true;
 		}
 		ret = wp_cli(
-			fill_flash,
+			context,
 			options.enable_wp,
 			options.disable_wp,
 			options.print_wp_status,
@@ -1223,50 +1602,61 @@ int main(int argc, char *argv[])
 			goto out_release;
 	}
 
-	flashrom_flag_set(fill_flash, FLASHROM_FLAG_FORCE, options.force);
+	flashrom_flag_set(context, FLASHROM_FLAG_FORCE, options.force);
 #if CONFIG_INTERNAL == 1
-	flashrom_flag_set(fill_flash, FLASHROM_FLAG_FORCE_BOARDMISMATCH, force_boardmismatch);
+	flashrom_flag_set(context, FLASHROM_FLAG_FORCE_BOARDMISMATCH, force_boardmismatch);
 #endif
-	flashrom_flag_set(fill_flash, FLASHROM_FLAG_VERIFY_AFTER_WRITE, !options.dont_verify_it);
-	flashrom_flag_set(fill_flash, FLASHROM_FLAG_VERIFY_WHOLE_CHIP, !options.dont_verify_all);
+	flashrom_flag_set(context, FLASHROM_FLAG_VERIFY_AFTER_WRITE, !options.dont_verify_it);
+	flashrom_flag_set(context, FLASHROM_FLAG_VERIFY_WHOLE_CHIP, !options.dont_verify_all);
 
 	/* FIXME: We should issue an unconditional chip reset here. This can be
 	 * done once we have a .reset function in struct flashchip.
 	 * Give the chip time to settle.
 	 */
-	programmer_delay(fill_flash, 100000);
-	if (options.read_it)
-		ret = do_read(fill_flash, options.filename);
+	programmer_delay(context, 100000);
+	if (options.read_repeated > 0)
+		ret = do_read_repeated(context, options.read_repeated, options.filename);
+	else if (options.read_it)
+		ret = do_read(context, options.filename);
 	else if (options.extract_it)
-		ret = do_extract(fill_flash);
+		ret = do_extract(context);
 	else if (options.erase_it) {
-		ret = flashrom_flash_erase(fill_flash);
-		/*
-		 * FIXME: Do we really want the scary warning if erase failed?
-		 * After all, after erase the chip is either blank or partially
-		 * blank or it has the old contents. A blank chip won't boot,
-		 * so if the user wanted erase and reboots afterwards, the user
-		 * knows very well that booting won't work.
-		 */
-		if (ret)
-			emergency_help_message();
+		ret = flashrom_flash_erase(context);
 	}
 	else if (options.write_it)
-		ret = do_write(fill_flash, options.filename, options.referencefile);
+		ret = do_write(context, options.filename, options.referencefile);
 	else if (options.verify_it)
-		ret = do_verify(fill_flash, options.filename);
+		ret = do_verify(context, options.filename);
+
+#if CONFIG_RPMC_ENABLED == 1
+	if (any_rpmc_op && ret == 0) {
+		ret = rpmc_cli(context,
+			       options.rpmc_root_key_file,
+			       options.rpmc_key_data,
+			       options.rpmc_counter_address,
+			       options.rpmc_previous_counter_value,
+			       options.rpmc_read_data,
+			       options.rpmc_write_root_key,
+			       options.rpmc_update_hmac_key,
+			       options.rpmc_increment_counter,
+			       options.rpmc_get_counter);
+	}
+#endif /* CONFIG_RPMC_ENABLED */
 
 out_release:
 	flashrom_layout_release(options.layout);
 out_shutdown:
 	flashrom_programmer_shutdown(NULL);
 out:
-	for (i = 0; i < chipcount; i++) {
-		flashrom_layout_release(flashes[i].default_layout);
-		free(flashes[i].chip);
-	}
+	flashrom_data_free(all_matched_names);
+	flashrom_flash_release(context);
 
 	free_options(&options);
+
+	time(&time_end);
+	msg_gdbg("Runtime from programmer init to shutdown: %dmin%2dsec\n",
+		(int)(difftime(time_end, time_start) / 60), (int)(difftime(time_end, time_start)) % 60);
+
 	ret |= close_logfile();
 	return ret;
 }

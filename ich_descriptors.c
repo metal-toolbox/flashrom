@@ -1,26 +1,19 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (c) 2010  Matthias Wenzel <bios at mazzoo dot de>
- * Copyright (c) 2011  Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2010  Matthias Wenzel <bios at mazzoo dot de>
+ * SPDX-FileCopyrightText: 2011  Stefan Tauner
  */
 
 #include "hwaccess_physmap.h"
 #include "ich_descriptors.h"
 
+#include "log.h"
+
 #ifdef ICH_DESCRIPTORS_FROM_DUMP_ONLY
 #include <stdio.h>
-#include <string.h>
+#include "platform/string.h"
 #define print(t, ...) printf(__VA_ARGS__)
 #endif
 
@@ -30,12 +23,12 @@
  */
 #define UPPER_MAP_OFFSET (4096 - 256 - 4)
 #define getVTBA(flumap)	(((flumap)->FLUMAP1 << 4) & 0x00000ff0)
-
 #include <stdbool.h>
 #include <sys/types.h>
-#include <string.h>
+#include "platform/string.h"
 #include "flash.h" /* for msg_* */
 #include "programmer.h"
+#include "helpers.h"
 
 ssize_t ich_number_of_regions(const enum ich_chipset cs, const struct ich_desc_content *const cont)
 {
@@ -49,7 +42,11 @@ ssize_t ich_number_of_regions(const enum ich_chipset cs, const struct ich_desc_c
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_ELKHART_LAKE:
 	case CHIPSET_JASPER_LAKE:
 		return 16;
@@ -79,7 +76,11 @@ ssize_t ich_number_of_masters(const enum ich_chipset cs, const struct ich_desc_c
 	case CHIPSET_C740_SERIES_EMMITSBURG:
 	case CHIPSET_APOLLO_LAKE:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_GEMINI_LAKE:
 	case CHIPSET_JASPER_LAKE:
 	case CHIPSET_ELKHART_LAKE:
@@ -121,7 +122,8 @@ void prettyprint_ich_chipset(enum ich_chipset cs)
 		"9 series Wildcat Point", "9 series Wildcat Point LP", "100 series Sunrise Point",
 		"C620 series Lewisburg", "C740 series Emmitsburg", "300 series Cannon Point",
 		"400 series Comet Point", "500 series Tiger Point", "600 series Alder Point",
-		"Meteor Lake", "Apollo Lake", "Gemini Lake", "Jasper Lake", "Elkhart Lake",
+		"Apollo Lake", "Gemini Lake", "Jasper Lake", "Elkhart Lake",
+		"Meteor Lake", "Panther Lake", "Wildcat Lake", "Nova Lake",
 	};
 	if (cs < CHIPSET_ICH8 || cs - CHIPSET_ICH8 + 1 >= ARRAY_SIZE(chipset_names))
 		cs = 0;
@@ -218,7 +220,11 @@ static const char *pprint_density(enum ich_chipset cs, const struct ich_descript
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_APOLLO_LAKE:
 	case CHIPSET_GEMINI_LAKE:
 	case CHIPSET_JASPER_LAKE:
@@ -316,8 +322,12 @@ static const char *pprint_freq(enum ich_chipset cs, uint8_t value)
 		return freq_str[2][value];
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_C740_SERIES_EMMITSBURG:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 		return freq_str[3][value];
 	case CHIPSET_ELKHART_LAKE:
 		return freq_str[4][value];
@@ -366,7 +376,11 @@ void prettyprint_ich_descriptor_component(enum ich_chipset cs, const struct ich_
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_APOLLO_LAKE:
 	case CHIPSET_GEMINI_LAKE:
 	case CHIPSET_JASPER_LAKE:
@@ -439,7 +453,7 @@ static void pprint_freg(const struct ich_desc_region *reg, uint32_t i)
 {
 	static const char *const region_names[] = {
 		"Descr.", "BIOS", "ME", "GbE", "Platf.", "DevExp", "BIOS2", "unknown",
-		"EC/BMC", "unknown", "IE", "10GbE", "unknown", "unknown", "unknown", "unknown"
+		"EC/BMC", "unknown", "IE", "10GbE0", "10GbE1", "unknown", "unknown", "PTT"
 	};
 	if (i >= ARRAY_SIZE(region_names)) {
 		msg_pdbg2("%s: region index too high.\n", __func__);
@@ -506,8 +520,13 @@ void prettyprint_ich_descriptor_master(const enum ich_chipset cs, const struct i
 	    cs == CHIPSET_400_SERIES_COMET_POINT ||
 	    cs == CHIPSET_500_SERIES_TIGER_POINT ||
 	    cs == CHIPSET_600_SERIES_ALDER_POINT ||
+	    cs == CHIPSET_700_SERIES_RAPTOR_POINT ||
 	    cs == CHIPSET_C740_SERIES_EMMITSBURG ||
-	    cs == CHIPSET_JASPER_LAKE || cs == CHIPSET_METEOR_LAKE) {
+	    cs == CHIPSET_JASPER_LAKE ||
+	    cs == CHIPSET_METEOR_LAKE ||
+	    cs == CHIPSET_WILDCAT_LAKE ||
+	    cs == CHIPSET_PANTHER_LAKE ||
+	    cs == CHIPSET_NOVA_LAKE) {
 		const char *const master_names[] = {
 			"BIOS", "ME", "GbE", "DevE", "EC",
 		};
@@ -518,24 +537,24 @@ void prettyprint_ich_descriptor_master(const enum ich_chipset cs, const struct i
 		}
 
 		size_t num_regions;
-		msg_pdbg2("      FD  BIOS  ME  GbE  Pltf Reg5 Reg6 Reg7  EC  Reg9");
+		msg_pdbg2("       FD    BIOS    ME    GbE    Pltf    DE   BIOS2   Reg7    EC    DE2  ");
 		if (cs == CHIPSET_100_SERIES_SUNRISE_POINT) {
 			num_regions = 10;
 			msg_pdbg2("\n");
 		} else {
 			num_regions = 16;
-			msg_pdbg2(" RegA RegB RegC RegD RegE RegF\n");
+			msg_pdbg2("  IE   10GbE0 10GbE1  RegD   RegE   PTT  \n");
 		}
 		for (i = 0; i < nm; i++) {
 			const unsigned int ext_region_start = 12;
 			size_t j;
 			msg_pdbg2("%-4s", master_names[i]);
 			for (j = 0; j < (size_t)min(num_regions, ext_region_start); j++)
-				msg_pdbg2("  %c%c ",
+				msg_pdbg2("   %c%c  ",
 					  desc->master.mstr[i].read & (1 << j) ? 'r' : ' ',
 					  desc->master.mstr[i].write & (1 << j) ? 'w' : ' ');
 			for (j = ext_region_start; j < num_regions; j++)
-				msg_pdbg2("  %c%c ",
+				msg_pdbg2("   %c%c  ",
 					  desc->master.mstr[i].ext_read & (1 << (j - ext_region_start)) ? 'r' : ' ',
 					  desc->master.mstr[i].ext_write & (1 << (j - ext_region_start)) ? 'w' : ' ');
 			msg_pdbg2("\n");
@@ -1082,6 +1101,16 @@ static enum ich_chipset guess_ich_chipset_from_content(const struct ich_desc_con
 				return CHIPSET_JASPER_LAKE;
 			else if (content->CSSO == 0x70)
 				return CHIPSET_METEOR_LAKE;
+			else if (content->CSSO == 0x60) {
+				switch (content->ISL) {
+				case 0x78:
+					return CHIPSET_WILDCAT_LAKE;
+				case 0xa9:
+					return CHIPSET_NOVA_LAKE;
+				default:
+					return CHIPSET_PANTHER_LAKE;
+				}
+			}
 		}
 		msg_pwarn("Unknown flash descriptor, assuming 500 series compatibility.\n");
 		return CHIPSET_500_SERIES_TIGER_POINT;
@@ -1105,7 +1134,11 @@ static enum ich_chipset guess_ich_chipset(const struct ich_desc_content *const c
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_GEMINI_LAKE:
 	case CHIPSET_JASPER_LAKE:
 	case CHIPSET_ELKHART_LAKE:
@@ -1266,7 +1299,11 @@ int getFCBA_component_density(enum ich_chipset cs, const struct ich_descriptors 
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_APOLLO_LAKE:
 	case CHIPSET_GEMINI_LAKE:
 	case CHIPSET_JASPER_LAKE:
@@ -1312,7 +1349,11 @@ static uint32_t read_descriptor_reg(enum ich_chipset cs, uint8_t section, uint16
 	case CHIPSET_400_SERIES_COMET_POINT:
 	case CHIPSET_500_SERIES_TIGER_POINT:
 	case CHIPSET_600_SERIES_ALDER_POINT:
+	case CHIPSET_700_SERIES_RAPTOR_POINT:
 	case CHIPSET_METEOR_LAKE:
+	case CHIPSET_PANTHER_LAKE:
+	case CHIPSET_WILDCAT_LAKE:
+	case CHIPSET_NOVA_LAKE:
 	case CHIPSET_APOLLO_LAKE:
 	case CHIPSET_GEMINI_LAKE:
 	case CHIPSET_JASPER_LAKE:

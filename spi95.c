@@ -1,27 +1,20 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2019 Konstantin Grudnev
- * Copyright (C) 2019 Nikolay Nikolaev
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License,
- * or any later version.
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2019 Konstantin Grudnev
+ * SPDX-FileCopyrightText: 2019 Nikolay Nikolaev
  */
 
 /*
  * Contains SPI chip driver functions related to ST95XXX series (SPI EEPROM)
  */
-#include <string.h>
+#include "platform/string.h"
 #include <stdlib.h>
 #include "flashchips.h"
 #include "chipdrivers.h"
 #include "spi.h"
+#include "log.h"
 
 /* For ST95XXX chips which have RDID */
 int probe_spi_st95(struct flashctx *flash)

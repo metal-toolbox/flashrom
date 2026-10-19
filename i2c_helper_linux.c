@@ -1,80 +1,36 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2020 The Chromium OS Authors
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2020 The Chromium OS Authors
  */
 
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
-#include <unistd.h>
-
-#include <stdlib.h>
-#include <linux/i2c.h>
-#include <linux/i2c-dev.h>
-
-#include "flash.h"
 #include "i2c_helper.h"
+
 #include "programmer.h"
+#include "platform/i2c.h"
+#include <errno.h>
+#include "platform/string.h"
+#include <stdlib.h>
+#include "log.h"
 
-/* Null characters are placeholders for bus number digits */
-#define I2C_DEV_PREFIX	"/dev/i2c-\0\0\0"
-#define I2C_MAX_BUS	255
 
-int i2c_close(int fd)
+int i2c_write_buffer(int fd, uint16_t addr, void *buf, uint16_t len)
 {
-	return fd == -1 ? 0 : close(fd);
+	i2c_buffer_t data;
+	if (i2c_buffer_t_fill(&data, buf, len))
+		return -1;
+
+	return i2c_write(fd, addr, &data) == len ? 0 : -1;
 }
 
-int i2c_open_path(const char *path, uint16_t addr, int force)
+int i2c_read_buffer(int fd, uint16_t addr, void *buf, uint16_t len)
 {
-	int fd = open(path, O_RDWR);
-	if (fd < 0) {
-		msg_perr("Unable to open I2C device %s: %s.\n", path, strerror(errno));
-		return fd;
-	}
+	i2c_buffer_t data;
+	if (i2c_buffer_t_fill(&data, buf, len))
+		return -1;
 
-	int request = force ? I2C_SLAVE_FORCE : I2C_SLAVE;
-	int ret = ioctl(fd, request, addr);
-	if (ret < 0) {
-		msg_perr("Unable to set I2C slave address to 0x%02x: %s.\n", addr, strerror(errno));
-		i2c_close(fd);
-		return ret;
-	}
-
-	return fd;
-}
-
-int i2c_open(int bus, uint16_t addr, int force)
-{
-	char dev[sizeof(I2C_DEV_PREFIX)] = {0};
-
-	int ret = -1;
-
-	if (bus < 0 || bus > I2C_MAX_BUS) {
-		msg_perr("Invalid I2C bus %d.\n", bus);
-		return ret;
-	}
-
-	ret = snprintf(dev, sizeof(dev), "%s%d", I2C_DEV_PREFIX, bus);
-	if (ret < 0) {
-		msg_perr("Unable to join bus number to device name: %s.\n", strerror(errno));
-		return ret;
-	}
-
-	return i2c_open_path(dev, addr, force);
+	return i2c_read(fd, addr, &data) == len ? 0 : -1;
 }
 
 static int get_bus_number(char *bus_str)
@@ -94,6 +50,37 @@ static int get_bus_number(char *bus_str)
 
 	msg_pinfo("Using I2C bus %d.\n", bus);
 	return bus;
+}
+
+int i2c_require_allow_brick(const struct programmer_cfg *cfg)
+{
+	char *brick_str = extract_programmer_param_str(cfg, "allow_brick");
+	bool allow_brick = false; /* Default behaviour is to bail. */
+
+	if (brick_str) {
+		if (!strcmp(brick_str, "yes")) {
+			allow_brick = true;
+		} else {
+			msg_perr("%s: Incorrect param format, allow_brick=yes.\n", __func__);
+			free(brick_str);
+			return -1;
+		}
+	}
+	free(brick_str);
+
+	/*
+	 * TODO: Once board_enable can facilitate safe i2c allow listing
+	 * 	 then this can be removed.
+	 */
+	if (!allow_brick) {
+		msg_perr("%s: For i2c drivers you must explicitly 'allow_brick=yes'. ", __func__);
+		msg_perr("There is currently no way to determine if the programmer works on a board "
+			 "as i2c device address space can be overloaded. Set 'allow_brick=yes' if "
+			 "you are sure you know what you are doing.\n");
+		return -1;
+	}
+
+	return 0;
 }
 
 int i2c_open_from_programmer_params(const struct programmer_cfg *cfg, uint16_t addr, int force)
@@ -123,30 +110,3 @@ out:
 	return fd;
 }
 
-int i2c_read(int fd, uint16_t addr, i2c_buffer_t *buf)
-{
-	if (buf->len == 0)
-		return 0;
-
-	int ret = ioctl(fd, I2C_SLAVE, addr);
-	if (ret < 0) {
-		msg_perr("Unable to set I2C slave address to 0x%02x: %s.\n", addr, strerror(errno));
-		return ret;
-	}
-
-	return read(fd, buf->buf, buf->len);
-}
-
-int i2c_write(int fd, uint16_t addr, const i2c_buffer_t *buf)
-{
-	if (buf->len == 0)
-		return 0;
-
-	int ret = ioctl(fd, I2C_SLAVE, addr);
-	if (ret < 0) {
-		msg_perr("Unable to set I2C slave address to 0x%02x: %s.\n", addr, strerror(errno));
-		return ret;
-	}
-
-	return write(fd, buf->buf, buf->len);
-}

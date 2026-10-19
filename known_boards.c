@@ -1,29 +1,15 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Uwe Hermann <uwe@hermann-uwe.de>
- * Copyright (C) 2009 Carl-Daniel Hailfinger
- * Copyright (C) 2011-2013 Stefan Tauner
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2009 Uwe Hermann <uwe@hermann-uwe.de>
+ * SPDX-FileCopyrightText: 2009 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2011-2013 Stefan Tauner
  */
 
 #include "programmer.h"
 
-
-#ifdef CONFIG_PRINT_WIKI
 #define B(vendor, name, status, url, note) { vendor, name, status, url, note }
-#else
-#define B(vendor, name, status, url, note) { vendor, name, status }
-#endif
 
 /* Please keep this list alphabetically ordered by vendor/board. */
 const struct board_info boards_known[] = {
@@ -551,6 +537,7 @@ const struct board_info boards_known[] = {
 	B("Shuttle",	"FN25",			OK, "http://www.shuttle.eu/products/discontinued/barebones/sn25p/?0=", NULL),
 	B("Shuttle",	"FN78S",		OK, "http://www.shuttle.eu/products/discontinued/barebones/sn78sh7/", NULL),
 	B("Shuttle",	"X50/X50(B)",		OK, "http://au.shuttle.com/product_detail_spec.jsp?PI=1241", NULL),
+	B("Sophos",	"XG 230r2",		DEP, NULL, "Skylake/Intel H110 PCH. Probing and reading the 16 MB image work via internal programmer (hardware sequencing; SPI configuration is locked by  OEM AMI BIOS). Writes are blocked by BIOS Interface."),
 	B("Soyo",	"SY-5VD",		BAD, "http://www.soyo.com/content/Downloads/163/&c=80&p=464&l=English", "No public report found. Owned by Uwe Hermann <uwe@hermann-uwe.de>. May work now."),
 	B("Soyo",	"SY-6BA+ III",		OK, "http://www.motherboard.cz/mb/soyo/SY-6BA+III.htm", NULL),
 	B("Soyo",	"SY-7VCA",		OK, "http://www.tomshardware.com/reviews/12-socket-370-motherboards,196-15.html", NULL),

@@ -1,16 +1,8 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright 2020 Google LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2020 Google LLC
  */
 
 #include <include/test.h>
@@ -20,7 +12,8 @@
 #include "io_real.h"
 
 #include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
+#include "platform/string.h"
 #include <stdint.h>
 #include <pthread.h>
 
@@ -136,6 +129,34 @@ int __wrap___open64_2(const char *pathname, int flags, ...)
 		va_end(ap);
 	}
 	return mock_open(pathname, flags, (mode_t) mode);
+}
+
+int __wrap_fcntl(int fd, int cmd, ...)
+{
+	LOG_ME;
+	if (get_io() && get_io()->iom_ioctl) {
+		va_list args;
+		int out;
+		va_start(args, cmd);
+		out = get_io()->iom_fcntl(get_io()->state, fd, cmd, args);
+		va_end(args);
+		return out;
+	}
+	return 0;
+}
+
+int __wrap_fcntl64(int fd, int cmd, ...)
+{
+	LOG_ME;
+	if (get_io() && get_io()->iom_ioctl) {
+		va_list args;
+		int out;
+		va_start(args, cmd);
+		out = get_io()->iom_fcntl(get_io()->state, fd, cmd, args);
+		va_end(args);
+		return out;
+	}
+	return 0;
 }
 
 int __wrap_ioctl(int fd, unsigned long int request, ...)
@@ -386,6 +407,18 @@ unsigned int __wrap_INL(unsigned short port)
 	return 0;
 }
 
+int __wrap_tcgetattr(int fd, struct termios *termios_p)
+{
+	LOG_ME;
+	return 0;
+}
+
+int __wrap_tcsetattr(int fd, int optional_actions, const struct termios *termios_p)
+{
+	LOG_ME;
+	return 0;
+}
+
 static void *doing_nothing(void *vargp) {
 	return NULL;
 }
@@ -420,8 +453,17 @@ int main(int argc, char *argv[])
 		cmocka_unit_test(tolower_string_test_success),
 		cmocka_unit_test(reverse_byte_test_success),
 		cmocka_unit_test(reverse_bytes_test_success),
+		cmocka_unit_test(parse_voltage_success),
+		cmocka_unit_test(parse_voltage_invalid),
 	};
 	ret |= cmocka_run_group_tests_name("helpers.c tests", helpers_tests, NULL, NULL);
+
+	const struct CMUnitTest i2c_helper_tests[] = {
+		cmocka_unit_test(i2c_require_allow_brick_yes_test_success),
+		cmocka_unit_test(i2c_require_allow_brick_absent_test_success),
+		cmocka_unit_test(i2c_require_allow_brick_invalid_test_success),
+	};
+	ret |= cmocka_run_group_tests_name("i2c_helper.c tests", i2c_helper_tests, NULL, NULL);
 
 	const struct CMUnitTest selfcheck[] = {
 		cmocka_unit_test(selfcheck_programmer_table),
@@ -437,10 +479,20 @@ int main(int argc, char *argv[])
 	};
 	ret |= cmocka_run_group_tests_name("flashrom.c tests", flashrom_tests, NULL, NULL);
 
+	const struct CMUnitTest libflashrom_tests[] = {
+		cmocka_unit_test(flashrom_set_log_callback_test_success),
+		cmocka_unit_test(flashrom_set_log_callback_v2_test_success),
+		cmocka_unit_test(flashrom_set_log_level_test_success),
+		cmocka_unit_test(flashrom_supported_programmers_test_success),
+		cmocka_unit_test(probe_v2_error_code_propagation),
+		cmocka_unit_test(flashrom_layout_compare_test_success),
+	};
+	ret |= cmocka_run_group_tests_name("libflashrom.c tests", libflashrom_tests, NULL, NULL);
+
 	const struct CMUnitTest spi25_tests[] = {
 		cmocka_unit_test(spi_write_enable_test_success),
 		cmocka_unit_test(spi_write_disable_test_success),
-		cmocka_unit_test(spi_read_chunked_test_success),
+		cmocka_unit_test(default_spi_read_test_success),
 		cmocka_unit_test(probe_spi_rdid_test_success),
 		cmocka_unit_test(probe_spi_rdid4_test_success),
 		cmocka_unit_test(probe_spi_rems_test_success),
@@ -452,15 +504,34 @@ int main(int argc, char *argv[])
 	};
 	ret |= cmocka_run_group_tests_name("spi25.c tests", spi25_tests, NULL, NULL);
 
+	const struct CMUnitTest probe_spi_tests[] = {
+		cmocka_unit_test(probe_jedec_rdid3_fixed_chipname),
+		cmocka_unit_test(probe_jedec_rdid3_try_all_flashchips),
+		cmocka_unit_test(probe_jedec_rdid3_no_matches_found),
+		cmocka_unit_test(probe_jedec_res1_fixed_chipname),
+		cmocka_unit_test(probe_jedec_res1_try_all_flashchips),
+		cmocka_unit_test(probe_jedec_res1_no_matches_found),
+	};
+	ret |= cmocka_run_group_tests_name("probe_spi.c tests", probe_spi_tests, NULL, NULL);
+
 	const struct CMUnitTest lifecycle_tests[] = {
 		cmocka_unit_test(dummy_basic_lifecycle_test_success),
 		cmocka_unit_test(dummy_probe_lifecycle_test_success),
+		cmocka_unit_test(dummy_probe_v2_one_match_for_W25Q128FV),
+		cmocka_unit_test(dummy_probe_v2_six_matches_for_MX25L6436),
+		cmocka_unit_test(dummy_probe_v2_sfdp_detection_for_MX25L6436),
+		cmocka_unit_test(dummy_probe_v2_no_matches_found),
 		cmocka_unit_test(dummy_probe_variable_size_test_success),
 		cmocka_unit_test(dummy_init_fails_unhandled_param_test_success),
 		cmocka_unit_test(dummy_init_success_invalid_param_test_success),
 		cmocka_unit_test(dummy_init_success_unhandled_param_test_success),
 		cmocka_unit_test(dummy_null_prog_param_test_success),
 		cmocka_unit_test(dummy_all_buses_test_success),
+		cmocka_unit_test(dummy_freq_param_init),
+		cmocka_unit_test(dummy_probe_and_read),
+		cmocka_unit_test(dummy_probe_and_write),
+		cmocka_unit_test(dummy_probe_and_erase),
+		cmocka_unit_test(dummy_probe_and_read_repeated),
 		cmocka_unit_test(nicrealtek_basic_lifecycle_test_success),
 		cmocka_unit_test(raiden_debug_basic_lifecycle_test_success),
 		cmocka_unit_test(raiden_debug_targetAP_basic_lifecycle_test_success),
@@ -478,6 +549,22 @@ int main(int argc, char *argv[])
 		cmocka_unit_test(realtek_mst_no_allow_brick_test_success),
 		cmocka_unit_test(ch341a_spi_basic_lifecycle_test_success),
 		cmocka_unit_test(ch341a_spi_probe_lifecycle_test_success),
+		cmocka_unit_test(ch341a_spi_fault_wrapped_basic_test_success),
+		cmocka_unit_test(ch341a_spi_fault_wrapped_probe_test_success),
+		cmocka_unit_test(ch347_spi_basic_lifecycle_test_success),
+		cmocka_unit_test(ch347_spi_probe_lifecycle_test_success),
+		cmocka_unit_test(ch347_spi_fault_wrapped_basic_test_success),
+		cmocka_unit_test(ch347_spi_fault_wrapped_probe_test_success),
+		cmocka_unit_test(spidriver_probe_lifecycle_test_success),
+		cmocka_unit_test(nv_sma_spi_basic_lifecycle_test_success),
+		cmocka_unit_test(fault_basic_lifecycle_test_success),
+		cmocka_unit_test(fault_init_missing_backend_test_success),
+		cmocka_unit_test(fault_init_self_wrap_test_success),
+		cmocka_unit_test(fault_init_unknown_backend_test_success),
+		cmocka_unit_test(fault_probe_lifecycle_test_success),
+		cmocka_unit_test(fault_probe_and_read_test_success),
+		cmocka_unit_test(fault_all_fault_params_test_success),
+		cmocka_unit_test(fault_deterministic_seed_test_success),
 	};
 	ret |= cmocka_run_group_tests_name("lifecycle.c tests", lifecycle_tests, NULL, NULL);
 
@@ -493,21 +580,45 @@ int main(int argc, char *argv[])
 
 	const struct CMUnitTest chip_tests[] = {
 		cmocka_unit_test(erase_chip_test_success),
+		cmocka_unit_test(erase_chip_with_progress),
 		cmocka_unit_test(erase_chip_with_dummyflasher_test_success),
+		cmocka_unit_test(erase_chip_dual_die_c2),
 		cmocka_unit_test(read_chip_test_success),
+		cmocka_unit_test(read_chip_with_progress),
 		cmocka_unit_test(read_chip_with_dummyflasher_test_success),
 		cmocka_unit_test(write_chip_test_success),
+		cmocka_unit_test(write_chip_with_progress),
 		cmocka_unit_test(write_chip_with_dummyflasher_test_success),
+		cmocka_unit_test(write_chip_feature_no_erase),
+		cmocka_unit_test(write_chip_feature_no_erase_with_progress),
 		cmocka_unit_test(write_nonaligned_region_with_dummyflasher_test_success),
 		cmocka_unit_test(verify_chip_test_success),
 		cmocka_unit_test(verify_chip_with_dummyflasher_test_success),
+		cmocka_unit_test(erase_chip_bad_status_test),
+		cmocka_unit_test(read_chip_bad_status_test),
+		cmocka_unit_test(write_chip_bad_status_test),
 	};
 	ret |= cmocka_run_group_tests_name("chip.c tests", chip_tests, NULL, NULL);
+
+	const struct CMUnitTest delay_tests[] = {
+		cmocka_unit_test(udelay_test_short),
+	};
+	ret |= cmocka_run_group_tests_name("udelay.c tests", delay_tests, NULL, NULL);
 
 	size_t n_erase_tests;
 	struct CMUnitTest *erase_func_algo_tests = get_erase_func_algo_tests(&n_erase_tests);
 	ret |= _cmocka_run_group_tests("erase_func_algo.c tests", erase_func_algo_tests, n_erase_tests, NULL, NULL);
 	free(erase_func_algo_tests);
+
+	size_t n_erase_protected_region_tests;
+	struct CMUnitTest *erase_protected_region_algo_tests
+				= get_erase_protected_region_algo_tests(&n_erase_protected_region_tests);
+	ret |= _cmocka_run_group_tests("erase_func_algo.c protected region tests",
+					erase_protected_region_algo_tests,
+					n_erase_protected_region_tests,
+					NULL,
+					NULL);
+	free(erase_protected_region_algo_tests);
 
 	// Write-protect group should run last.
 	const struct CMUnitTest chip_wp_tests[] = {
@@ -518,6 +629,7 @@ int main(int argc, char *argv[])
 		cmocka_unit_test(full_chip_erase_with_wp_dummyflasher_test_success),
 		cmocka_unit_test(partial_chip_erase_with_wp_dummyflasher_test_success),
 		cmocka_unit_test(wp_get_register_values_and_masks),
+		cmocka_unit_test(fudan_fm25w128_wp_decode_test_success),
 	};
 	ret |= cmocka_run_group_tests_name("chip_wp.c tests", chip_wp_tests, NULL, NULL);
 

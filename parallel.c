@@ -1,26 +1,18 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2004 Tyan Corp <yhlu@tyan.com>
- * Copyright (C) 2005-2008 coresystems GmbH
- * Copyright (C) 2008,2009 Carl-Daniel Hailfinger
- * Copyright (C) 2016 secunet Security Networks AG
- * (Written by Nico Huber <nico.huber@secunet.com> for secunet)
- * Copyright (C) 2009,2010,2011 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2004 Tyan Corp <yhlu@tyan.com>
+ * SPDX-FileCopyrightText: 2005-2008 coresystems GmbH
+ * SPDX-FileCopyrightText: 2008,2009 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2016 secunet Security Networks AG (Written by Nico Huber <nico.huber@secunet.com> for secunet)
+ * SPDX-FileCopyrightText: 2009,2010,2011 Carl-Daniel Hailfinger
  */
 
-#include "flash.h"
+#include "parallel.h"
 #include "programmer.h"
+#include "log.h"
 
 void chip_writeb(const struct flashctx *flash, uint8_t val, chipaddr addr)
 {
@@ -37,8 +29,10 @@ static void fallback_chip_writew(const struct flashctx *flash, uint16_t val,
 
 void chip_writew(const struct flashctx *flash, uint16_t val, chipaddr addr)
 {
-	if (flash->mst->par.chip_writew)
+	if (flash->mst->par.chip_writew) {
 		flash->mst->par.chip_writew(flash, val, addr);
+		return;
+	}
 	fallback_chip_writew(flash, val, addr);
 }
 
@@ -52,8 +46,10 @@ static void fallback_chip_writel(const struct flashctx *flash, uint32_t val,
 
 void chip_writel(const struct flashctx *flash, uint32_t val, chipaddr addr)
 {
-	if (flash->mst->par.chip_writel)
+	if (flash->mst->par.chip_writel) {
 		flash->mst->par.chip_writel(flash, val, addr);
+		return;
+	}
 	fallback_chip_writel(flash, val, addr);
 }
 
@@ -67,8 +63,10 @@ static void fallback_chip_writen(const struct flashctx *flash, const uint8_t *bu
 
 void chip_writen(const struct flashctx *flash, const uint8_t *buf, chipaddr addr, size_t len)
 {
-	if (flash->mst->par.chip_writen)
+	if (flash->mst->par.chip_writen) {
 		flash->mst->par.chip_writen(flash, buf, addr, len);
+		return;
+	}
 	fallback_chip_writen(flash, buf, addr, len);
 }
 
@@ -121,8 +119,10 @@ static void fallback_chip_readn(const struct flashctx *flash, uint8_t *buf,
 void chip_readn(const struct flashctx *flash, uint8_t *buf, chipaddr addr,
 		size_t len)
 {
-	if (flash->mst->par.chip_readn)
+	if (flash->mst->par.chip_readn) {
 		flash->mst->par.chip_readn(flash, buf, addr, len);
+		return;
+	}
 	fallback_chip_readn(flash, buf, addr, len);
 }
 
@@ -132,12 +132,8 @@ int register_par_master(const struct par_master *mst,
 {
 	struct registered_master rmst = {0};
 
-	if (mst->shutdown) {
-		if (register_shutdown(mst->shutdown, data)) {
-			mst->shutdown(data); /* cleanup */
-			return 1;
-		}
-	}
+	if (register_master_shutdown(mst->shutdown, data))
+		return 1;
 
 	/* Bus masters supporting FWH/LPC cannot use chip physical maps, distinct
 	 * mappings are needed to support chips with FEATURE_REGISTERMAP

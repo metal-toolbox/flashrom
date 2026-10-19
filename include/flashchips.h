@@ -1,20 +1,11 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2000 Ronald G. Minnich <rminnich@gmail.com>
- * Copyright (C) 2005-2007 coresystems GmbH <stepan@coresystems.de>
- * Copyright (C) 2006-2009 Carl-Daniel Hailfinger
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2000 Ronald G. Minnich <rminnich@gmail.com>
+ * SPDX-FileCopyrightText: 2005-2007 coresystems GmbH <stepan@coresystems.de>
+ * SPDX-FileCopyrightText: 2006-2009 Carl-Daniel Hailfinger
  */
 
 #ifndef __FLASHCHIPS_H__
@@ -194,7 +185,7 @@
 #define ATMEL_AT45DB321E	/* same as above but with EDI 0x0100 */
 #define ATMEL_AT45DB321D	0x2701 /* Buggy data sheet */
 #define ATMEL_AT45DB642		/* No ID (opcode) available for AT45DB642 */
-#define ATMEL_AT45DB642D	0x2800
+#define ATMEL_AT45DB642D	0x2800 /* Same for AT45DB641E but with EDI 0x0100 */
 #define ATMEL_AT49BV512		0x03	/* Same as AT49F512 */
 #define ATMEL_AT49F001N		0x05	/* Same as AT49F001 */
 #define ATMEL_AT49F001NT	0x04	/* Same as AT49F001T */
@@ -211,8 +202,11 @@
 
 /* Boya/BoHong Microelectronics Inc. */
 #define BOYA_BOHONG_ID		0x68
+#define BOYA_BOHONG_B_25D20 	0x4012
+#define BOYA_BOHONG_B_25D40 	0x4013
 #define BOYA_BOHONG_B__25D80A	0x4014
 #define BOYA_BOHONG_B_25D16A	0x4015
+#define BOYA_BOHONG_B_25Q64AS	0x4017
 #define BOYA_BOHONG_B_25Q128AS	0x4018
 
 /* Bright Microelectronics has the same manufacturer ID as Hyundai... */
@@ -297,6 +291,7 @@
 #define EON_EN25QH64		0x7017
 #define EON_EN25QH128		0x7018
 #define EON_EN25QH256		0x7019
+#define EON_EN25QX128A		0x7118
 #define EON_EN25S10		0x3811
 #define EON_EN25S20		0x3812
 #define EON_EN25S40		0x3813
@@ -339,13 +334,17 @@
 
 #define FUDAN_ID		0x7F7F7F7F7F7F7FA1	/* Shanghai Fudan Microelectronics resides in bank 8 */
 #define FUDAN_ID_NOPREFIX	0xA1	/* Fudan, missing 0x7F prefix */
+#define FUDAN_FM25W128		0x2818
 #define FUDAN_FM25F005		0x3110
 #define FUDAN_FM25F01		0x3111
 #define FUDAN_FM25F02		0x3112	/* Same as FM25F02A */
 #define FUDAN_FM25F04		0x3113	/* Same as FM25F04A */
+#define FUDAN_FM25Q04		0x4013
 #define FUDAN_FM25Q08		0x4014
 #define FUDAN_FM25Q16		0x4015
 #define FUDAN_FM25Q32		0x4016
+#define FUDAN_FM25Q64		0x4017
+#define FUDAN_FM25Q128		0x4018
 
 #define FUJITSU_ID		0x04	/* Fujitsu */
 #define FUJITSU_MBM29DL400BC	0x0F
@@ -390,18 +389,29 @@
 #define GIGADEVICE_GD25Q16	0x4015	/* Same as GD25Q16B (which has OTP) */
 #define GIGADEVICE_GD25Q32	0x4016	/* Same as GD25Q32B */
 #define GIGADEVICE_GD25Q64	0x4017	/* Same as GD25Q64B */
-#define GIGADEVICE_GD25Q128	0x4018	/* Same as GD25Q128B, GD25Q127C, GD25Q128C, and GD25Q128E, can be distinguished by SFDP */
-#define GIGADEVICE_GD25Q256D	0x4019
+#define GIGADEVICE_GD25Q128	0x4018	/* Same as GD25Q128B, GD25Q127C, GD25Q128C,and GD25Q128E, GD25B128E, GD25R128E can be distinguished by SFDP */
+#define GIGADEVICE_GD25Q256D	0x4019	/* Same as GD25B256E, GD25Q256E, GD25R256E	*/
+#define GIGADEVICE_GD25B512MF	0x401A  /* Same as GD25R512MF */
 #define GIGADEVICE_GD25VQ21B	0x4212
 #define GIGADEVICE_GD25VQ41B	0x4213  /* Same as GD25VQ40C, can be distinguished by SFDP */
 #define GIGADEVICE_GD25VQ80C	0x4214
 #define GIGADEVICE_GD25VQ16C	0x4215
+#define GIGADEVICE_GD25F64F	0x4317
+#define GIGADEVICE_GD25F128F	0x4318
+#define GIGADEVICE_GD25F256F	0x4319
 #define GIGADEVICE_GD25LQ40	0x6013
 #define GIGADEVICE_GD25LQ80	0x6014
 #define GIGADEVICE_GD25LQ16	0x6015
 #define GIGADEVICE_GD25LQ32	0x6016
 #define GIGADEVICE_GD25LQ64	0x6017	/* Same as GD25LQ64B (which is faster) */
 #define GIGADEVICE_GD25LQ128CD	0x6018
+#define GIGADEVICE_GD25LQ255E	0x6019
+#define GIGADEVICE_GD25LB512MF	0x601A  /* Same as GD25LR512MF */
+#define GIGADEVICE_GD25LF128E	0x6318
+#define GIGADEVICE_GD25LF256F	0x6319
+#define GIGADEVICE_GD25LF512MF	0x631A
+#define GIGADEVICE_GD25LR256E	0x6719
+#define GIGADEVICE_GD25LR512ME	0x671A	/*	Same as GD25LB512ME */
 #define GIGADEVICE_GD25WQ80E	0x6514
 #define GIGADEVICE_GD29GL064CAB	0x7E0601
 
@@ -475,10 +485,12 @@
 #define ISSI_ID			0xD5	/* ISSI Integrated Silicon Solutions, see also PMC. */
 #define ISSI_ID_SPI		0x9D	/* ISSI ID used for SPI flash, see also PMC_ID_NOPREFIX */
 #define ISSI_IS25LP016		0x6015
+#define ISSI_IS25LP032		0x6016
 #define ISSI_IS25LP064		0x6017
 #define ISSI_IS25LP128		0x6018
 #define ISSI_IS25LP256		0x6019
 #define ISSI_IS25LQ016		0x1445
+#define ISSI_IS25LQ032		0x4016
 #define ISSI_IS25WP016		0x7015
 #define ISSI_IS25WP020		0x7012
 #define ISSI_IS25WP032		0x7016
@@ -515,12 +527,13 @@
 #define MACRONIX_MX25L1605	0x2015	/* MX25L1605 (64k 0x20); MX25V16066 (4k 0x20, 32k 0x52, 64k 0xD8); MX25L1605A/MX25L1606E/MX25L1608E (4k 0x20, 64k 0x52); MX25L1605D/MX25L1608D/MX25L1673E (4k 0x20) */
 #define MACRONIX_MX25L3205	0x2016	/* MX25L3205, MX25L3205A (64k 0x20); MX25L3205D/MX25L3208D (4k 0x20); MX25L3206E/MX25L3208E (4k 0x20, 64k 0x52); MX25L3233F/MX25L3273E (4k 0x20, 32k 0x52) */
 #define MACRONIX_MX25L6405	0x2017	/* MX25L6405, MX25L6405D (64k 0x20); MX25L6406E/MX25L6408E (4k 0x20); MX25L6436E/MX25L6445E/MX25L6465E/MX25L6473E (4k 0x20, 32k 0x52) */
-#define MACRONIX_MX25L12805D	0x2018	/* MX25L12805D (no 32k); MX25L12865E, MX25L12835F, MX25L12845E, MX25L12873F, MX25L12833F (32k 0x52) */
+#define MACRONIX_MX25L12805D	0x2018	/* MX25L12805D (no 32k); MX25L12865E, MX25L12835F, MX25L12845E, MX25L12873F, MX25L12833F, MX25L12850F (32k 0x52) */
 #define MACRONIX_MX25L25635F	0x2019	/* Same as MX25L25639F, but the latter seems to not support REMS */
-#define MACRONIX_MX25L1635D	0x2415
+#define MACRONIX_MX25L1635D	0x2415        /* MX25L1633E */
 #define MACRONIX_MX25L1635E	0x2515	/* MX25L1635{E} */
 #define MACRONIX_MX66L51235F	0x201a	/* MX66L51235F, MX25L51245G */
 #define MACRONIX_MX66L1G45G	0x201b	/* MX66L1G45G */
+#define MACRONIX_MX66L2G45G	0x201c	/* MX66L2G45G */
 #define MACRONIX_MX25V4035F	0x2313
 #define MACRONIX_MX25V8035F	0x2314
 #define MACRONIX_MX25V1635F	0x2315	/* MX25V1636E */
@@ -528,16 +541,29 @@
 #define MACRONIX_MX25U1635E	0x2535
 #define MACRONIX_MX25U3235E	0x2536	/* Same as MX25U6435F */
 #define MACRONIX_MX25U6435E	0x2537	/* Same as MX25U6435F */
-#define MACRONIX_MX25U12835E	0x2538	/* Same as MX25U12835F */
-#define MACRONIX_MX25U25635F	0x2539     /* Same as MX25U25643G */
+#define MACRONIX_MX25U12835E	0x2538	/* Same as MX25U12835F, MX25U12873F */
+#define MACRONIX_MX25U25635F	0x2539     /* Same as MX25U25643G, MX25U25645G */
 #define MACRONIX_MX25U51245G	0x253a
-#define MACRONIX_MX25L3235D	0x5E16	/* MX25L3225D/MX25L3235D/MX25L3237D */
+#define MACRONIX_MX66U1G45G	0x253b	/* MX66U1G45G */
+#define MACRONIX_MX66U2G45G	0x253c
+
+#define MACRONIX_MX25L3235D	0x5E16	/* MX25L3225D/MX25L3235D/MX25L3237D/MX25L3236D */
 #define MACRONIX_MX25L6495F	0x9517
 #define MACRONIX_MX25L3255E	0x9e16
 #define MACRONIX_MX77L25650F	0x7519
+#define MACRONIX_MX77U25650F	0x7539
+#define MACRONIX_MX77U51250F	0x753A
+#define MACRONIX_MX25L3239E     0x2536
+#define MACRONIX_MX25LM51245G  	0x853A
 
+#define MACRONIX_MX25R512F	0x2810
+#define MACRONIX_MX25R1035F	0x2811
+#define MACRONIX_MX25R1635F	0x2815
 #define MACRONIX_MX25R3235F	0x2816
 #define MACRONIX_MX25R6435F	0x2817
+#define MACRONIX_MX25R2035F	0x2812
+#define MACRONIX_MX25R4035F	0x2813
+#define MACRONIX_MX25R8035F	0x2814
 
 #define MACRONIX_MX29F001B	0x19
 #define MACRONIX_MX29F001T	0x18
@@ -590,6 +616,9 @@
 #define MACRONIX_MX29SL800CB	0x6B	/* Same as MX29SL802CB */
 #define MACRONIX_MX29SL800CT	0xEA	/* Same as MX29SL802CT */
 
+#define MICRON_ID		0x2C
+#define MICRON_MT35XU02GCBA	0x5B1C
+
 /* Nantronics Semiconductors is listed in JEP106AJ in bank 7, so it should have 6 continuation codes in front
  * of the manufacturer ID of 0xD5. http://www.nantronicssemi.com */
 #define NANTRONICS_ID			0x7F7F7F7F7F7FD5	/* Nantronics */
@@ -639,6 +668,8 @@
 #define PUYA_P25Q06H		0x4010
 #define PUYA_P25Q11H		0x4011
 #define PUYA_P25Q21H		0x4012
+#define PUYA_P25D80H		0x6014
+#define PUYA_P25D32SH		0x6016	/* Same as P25Q32SH */
 
 /*
  * The Sanyo chip found so far uses SPI, first byte is manufacturer code,
@@ -680,7 +711,6 @@
 #define SPANSION_S25FL064A	0x0216	/* Same as S25FL064P, but the latter supports EDI and CFI */
 #define SPANSION_S25FL128	0x2018	/* Same ID for various S25FL127S, S25FL128P, S25FL128S and S25FL129P (including dual-die S70FL256P) variants (EDI supported) */
 #define SPANSION_S25FL256	0x0219
-#define SPANSION_S25FL512	0x0220
 #define SPANSION_S25FL204	0x4013
 #define SPANSION_S25FL208	0x4014
 #define SPANSION_S25FL216	0x4015	/* Same as S25FL216K, but the latter supports OTP, 3 status regs, quad I/O, SFDP etc. */
@@ -689,6 +719,7 @@
 #define SPANSION_S25FL164K	0x4017
 #define SPANSION_S25FL128L	0x6018
 #define SPANSION_S25FL256L	0x6019
+#define SPANSION_S25FL512S_UL	0x02200080  /* Uniform Large (256kB) sectors */
 #define SPANSION_S25FS128S_L	0x20180081  /* Large sectors. */
 #define SPANSION_S25FS128S_S	0x20180181  /* Small sectors. */
 #define SPANSION_S25FS256S_L	0x02190081  /* Large sectors. */
@@ -697,6 +728,7 @@
 #define SPANSION_S25FL128S_US	0x20180180  /* Uniform Small (64kB) sectors */
 #define SPANSION_S25FL256S_UL	0x02190080  /* Uniform Large (128kB) sectors */
 #define SPANSION_S25FL256S_US	0x02190180  /* Uniform Small (64kB) sectors */
+#define SPANSION_S25FS512S_UL	0x02200081  /* Uniform Large (256kB) sectors */
 
 /* Spansion 29GL families got a suffix indicating the process technology but share the same 3-Byte IDs. They can
  * however be differentiated by CFI byte 45h. Some versions exist which have special top or bottom boot sectors
@@ -835,13 +867,23 @@
 #define ST_M45PE40		0x4013
 #define ST_M45PE80		0x4014	/* Same as XM25QH80B */
 #define ST_M45PE16		0x4015
-#define XMC_XM25QH64C		0x4017
-#define XMC_XM25QU64C		0x4117
+#define XMC_XM25QH64C		0x4017	/* Same as XM25QH64D */
+#define XMC_XM25QU64C		0x4117	/* Same as XM25LU64C */
+#define XMC_XM25QU80B		0x5014
+#define XMC_XM25QH16C		0x4015	/* Same as XM25QH16D */
+#define XMC_XM25QU16C		0x5015
+#define XMC_XM25QH32C		0x4016	/* Same as XM25QH32D */
+#define XMC_XM25QU32C		0x5016
+#define XMC_XM25QH64A   	0x7017
 #define XMC_XM25QH128A		0x7018
-#define XMC_XM25QH128C		0x4018
-#define XMC_XM25QU128C		0x4118
-#define XMC_XM25QH256C		0x4019
-#define XMC_XM25QU256C		0x4119
+#define XMC_XM25QH128C		0x4018	/* Same as XM25QH128D */
+#define XMC_XM25QU128C		0x4118	/* Same as XM25QU128D */
+#define XMC_XM25RH128C		0x4318
+#define XMC_XM25QH256C		0x4019	/* Same as XM25QH256D */
+#define XMC_XM25QU256C		0x4119	/* Same as XM25QU256D */
+#define XMC_XM25RU256C		0x4419
+#define XMC_XM25QH512C		0x4020	/* Same as XM25QH512D */
+#define XMC_XM25QU512C		0x4120	/* Same as XM25QU512D */
 #define ST_M25PX80		0x7114
 #define ST_M25PX16		0x7115
 #define ST_M25PX32		0x7116
@@ -981,31 +1023,53 @@
 #define WINBOND_NEX_W25X32	0x3016
 #define WINBOND_NEX_W25X64	0x3017
 #define WINBOND_NEX_W25Q40_V	0x4013	/* W25Q40BV; W25Q40BL (2.3-3.6V) */
-#define WINBOND_NEX_W25Q80_V	0x4014	/* W25Q80BV */
+#define WINBOND_NEX_W25Q80_V	0x4014	/* W25Q80BV; W25Q80DV; W25Q80RV */
 #define WINBOND_NEX_W25Q16_V	0x4015	/* W25Q16CV; W25Q16DV */
 #define WINBOND_NEX_W25Q32_V	0x4016	/* W25Q32BV; W25Q32FV in SPI mode (default) */
 #define WINBOND_NEX_W25Q64_V	0x4017	/* W25Q64BV, W25Q64CV; W25Q64FV in SPI mode (default) */
 #define WINBOND_NEX_W25Q128_V	0x4018	/* W25Q128BV; W25Q128FV in SPI mode (default) */
 #define WINBOND_NEX_W25Q256_V	0x4019	/* W25Q256FV or W25Q256JV_Q (QE=1) */
 #define WINBOND_NEX_W25Q512JV	0x4020	/* W25Q512JV */
+#define WINBOND_NEX_W25Q01JV	0x4021	/* W25Q01JV */
 #define WINBOND_NEX_W25Q20_W	0x5012	/* W25Q20BW */
 #define WINBOND_NEX_W25Q40BW	0x5013	/* W25Q40BW */
 #define WINBOND_NEX_W25Q80BW	0x5014	/* W25Q80BW */
+#define WINBOND_NEX_W35T02NW	0x5B1C	/* W35T02NW */
 #define WINBOND_NEX_W25Q40EW	0x6013	/* W25Q40EW */
 #define WINBOND_NEX_W25Q80EW	0x6014	/* W25Q80EW */
 #define WINBOND_NEX_W25Q16_W	0x6015	/* W25Q16DW */
 #define WINBOND_NEX_W25Q32_W	0x6016	/* W25Q32DW; W25Q32FV in QPI mode */
 #define WINBOND_NEX_W25Q64_W	0x6017	/* W25Q64DW; W25Q64FV in QPI mode */
 #define WINBOND_NEX_W25Q128_W	0x6018	/* W25Q128FW; W25Q128FV in QPI mode */
-#define WINBOND_NEX_W25Q256_W	0x6019	/* W25Q256JW */
+#define WINBOND_NEX_W25Q256_W	0x6019	/* W25Q256JW, same as W25R256JW */
+#define WINBOND_NEX_W25R512NW	0x6020	/* W25R512NW/W74M51NW */
+#define WINBOND_NEX_W25Q16JV_M	0x7015	/* W25Q16JV_M (QE=0) */
+#define WINBOND_NEX_W25Q32JV_M	0x7016	/* W25Q32JV_M (QE=0) */
 #define WINBOND_NEX_W25Q64JV	0x7017	/* W25Q64JV */
 #define WINBOND_NEX_W25Q128_V_M	0x7018	/* W25Q128JVSM */
 #define WINBOND_NEX_W25Q256JV_M	0x7019	/* W25Q256JV_M (QE=0) */
+#define WINBOND_NEX_W25Q512JV_M	0x7020	/* W25Q512JV_M (QE=0) */
 #define WINBOND_NEX_W25Q32JW_M	0x8016  /* W25Q32JW...M */
 #define WINBOND_NEX_W25Q64JW_M	0x8017  /* W25Q64JW...M */
 #define WINBOND_NEX_W25Q128_DTR	0x8018	/* W25Q128JW_DTR */
 #define WINBOND_NEX_W25Q256_DTR	0x8019	/* W25Q256JW_DTR aka W25Q256256JW-IM */
 #define WINBOND_NEX_W25Q512NW_IM	0x8020 /* W25Q512NW-IM */
+/*
+ * W77Q/T chips are drop and replace to the w25Q series
+ */
+#define WINBOND_NEX_W77Q32JW	0x8a16	/* W77Q16JW; W77Q32JW */
+#define WINBOND_NEX_W77Q64_W	0x8a17	/* W77Q64JW; W77Q64NW */
+#define WINBOND_NEX_W77Q12_W	0x8a18	/* W77Q128JW; W77Q12NW */
+#define WINBOND_NEX_W77Q25NWS	0x8a19	/* W77Q25NWS */
+#define WINBOND_NEX_W77Q51NWD	0x8a1a	/* W77Q51NWD */
+#define WINBOND_NEX_W77Q01NWQ	0x8a1b	/* W77Q01NWQ */
+#define WINBOND_NEX_W77T64NW	0x8e17	/* W77T64NW */
+#define WINBOND_NEX_W77T12NW	0x8e18	/* W77T12NW */
+#define WINBOND_NEX_W77T25NWS	0x8e19	/* W77T25NWS */
+#define WINBOND_NEX_W77T51NWD	0x8e1a	/* W77T51NWD */
+#define WINBOND_NEX_W77T01NWQ	0x8e1b	/* W77T01NWQ */
+#define WINBOND_NEX_W77Q64JV	0x4a17	/* W77Q64JV */
+#define WINBOND_NEX_W77Q128JV	0x4a18	/* W77Q128JV */
 
 #define WINBOND_ID		0xDA	/* Winbond */
 #define WINBOND_W19B160BB	0x49
@@ -1052,9 +1116,20 @@
 #define XTX_ID			0x0B	/* XTX Technology Limited */
 #define XTX_XT25F02E		0x4012
 #define XTX_XT25F64B		0x4017
+#define XTX_XT25F128B		0x4018
 
-#define ZETTADEVICE_ID          0xBA	/* Zetta Device */
-#define ZETTADEVICE_ZD25D20     0x2012
-#define ZETTADEVICE_ZD25D40     0x2013
+/*
+ * In the datasheet, Table 7.4 Manufacturer and Device Identification (ZB25VQ16)
+ * says that the RDID, OP Code 0x9F, should respond with:
+ * Manufacturer ID = 0x5E; Memory Type = 0x60;  Capacity = 0x15
+ * However, the device actually sends 0x0E; 0x40; 0x15. I don't know why.
+ */
+#define ZBIT_ID			0x0E	/* Zbit Semiconductor, Inc. */
+#define ZBIT_ZB25VQ16		0x4015
+
+#define ZETTA_ID		0xBA	/* Zetta Device */
+#define ZETTA_ZD25D20		0x2012
+#define ZETTA_ZD25D40		0x2013
+#define ZETTA_ZD25LQ128_REMS	0x17	/* RDID = 0x4218 */
 
 #endif /* !FLASHCHIPS_H */

@@ -1,14 +1,69 @@
-srcs += files(
-  ('endian_' + host_machine.endian() + '.c'),
-  'memaccess.c',
+# Endian
+dep_platform_endian = declare_dependency(
+  sources : files(
+    'endian_common.c',
+    'endian_' + host_machine.endian() + '.c',
+  ),
+)
+# __FLASHROM_LITTLE_ENDIAN__ / __FLASHROM_BIG_ENDIAN__
+add_project_arguments('-D__FLASHROM_' + host_machine.endian().to_upper() + '_ENDIAN__=1', language : 'c')
+
+# Getopt
+if cc.check_header('getopt.h')
+  add_project_arguments('-DHAVE_GETOPT_H=1', language : 'c')
+endif
+if not cc.has_function('getopt_long')
+  dep_platform_getopt = declare_dependency(
+    sources : files('getopt.c'),
+  )
+else
+  dep_platform_getopt = dependency('', required : false)
+endif
+
+# I2C
+if target_machine.system() == 'linux'
+  dep_platform_i2c = declare_dependency(
+    sources : files('i2c_linux.c'),
+    compile_args : [ '-DCONFIG_I2C_HELPER=1' ],
+  )
+else
+  dep_platform_i2c = dependency('', required : false)
+endif
+
+if cc.check_header('pciutils/pci.h')
+  add_project_arguments('-DHAVE_PCIUTILS_PCI_H=1', language : 'c')
+endif
+
+# String
+if cc.has_header_symbol('string.h', 'strndup')
+  add_project_arguments('-DHAVE_STRNDUP=1', language : 'c')
+endif
+if cc.has_header_symbol('string.h', 'strnlen')
+  add_project_arguments('-DHAVE_STRNLEN=1', language : 'c')
+endif
+if cc.has_header_symbol('string.h', 'strtok_r')
+  add_project_arguments('-DHAVE_STRTOK_R=1', language : 'c')
+endif
+dep_platform_string = declare_dependency(
+  sources : files('string.c'),
 )
 
-if host_machine.endian() == 'little'
-  add_project_arguments('-D__FLASHROM_LITTLE_ENDIAN__=1', language : 'c')
+# Select an appropriate delay implementation for the target OS
+if target_machine.system() == 'dos'
+  udelay_c = 'udelay_dos.c'
+elif target_machine.system() == 'windows'
+  udelay_c = 'udelay_windows.c'
+elif target_machine.system() == 'libpayload'
+  udelay_c = 'udelay_libpayload.c'
+else
+  udelay_c = 'udelay.c'
 endif
-if host_machine.endian() == 'big'
-  add_project_arguments('-D__FLASHROM_BIG_ENDIAN__=1', language : 'c')
-endif
+dep_platform_udelay = declare_dependency(
+  sources : files(udelay_c),
+)
+cargs += ['-DCONFIG_DELAY_MINIMUM_SLEEP_US=@0@'.format(
+  get_option('delay_minimum_sleep_us')
+)]
 
 # OpenBSD requires libi386 or libamd64 for I/O port handling
 if host_machine.system() == 'openbsd'
@@ -31,7 +86,6 @@ if host_machine.system() == 'netbsd'
     deps += libx86_64
   endif
 endif
-
 
 # SunOS requires external libraries for network sockets
 # they are used to support serial devices via network

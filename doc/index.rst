@@ -11,13 +11,15 @@
 
   dev_guide/index
   user_docs/index
+  contrib_howtos/index
+  supported_hw/index
   classic_cli_manpage
   contact
   release_notes/index
   about_flashrom/index
+  how_to_support_flashrom
   how_to_add_docs
   documentation_license
-  Old wiki website <https://wiki.flashrom.org/>
 
 .. include:: intro.rst
 

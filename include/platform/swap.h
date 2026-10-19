@@ -1,26 +1,17 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Carl-Daniel Hailfinger
- * Copyright (C) 2022 secunet Security Networks AG
- * (written by Thomas Heijligen <thomas.heijligen@secunet.com)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2009 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2022 secunet Security Networks AG and Thomas Heijligen <thomas.heijligen@secunet.com>
  */
 
 /*
  * inline functions and macros shared by endian conversion functions
  */
 
-#ifndef ___SWAP_H___
-#define ___SWAP_H___ 1
+#ifndef __PLATFORM_SWAP_H__
+#define __PLATFORM_SWAP_H__
 
 #include <stdint.h>
 
@@ -77,4 +68,4 @@ static inline uint64_t ___swap64(const uint64_t value)
 #define ___return_swapped(name, bits) \
 	uint##bits##_t name##bits (const uint##bits##_t value) { return ___swap##bits (value); }
 
-#endif /* !___SWAP_H___ */
+#endif /* __PLATFORM_SWAP_H__ */

@@ -1,22 +1,14 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2021 3mdeb Embedded Systems Consulting
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2021 3mdeb Embedded Systems Consulting
  */
 
 #include <include/test.h>
 #include <stdio.h>
-#include <string.h>
+#include <stdlib.h>
+#include "platform/string.h"
 
 #include "chipdrivers.h"
 #include "flash.h"
@@ -109,6 +101,28 @@ static const struct flashchip chip_W25Q128_V = {
 	.decode_range	= DECODE_RANGE_SPI25,
 };
 
+static const struct flashchip chip_FM25W128 = {
+	.vendor		= "aklm&dummyflasher",
+	.total_size	= 16 * 1024,
+	.page_size	= 256,
+	.tested		= TEST_OK_PREW,
+	.read		= SPI_CHIP_READ,
+	.write		= SPI_CHIP_WRITE256,
+	.unlock		= SPI_DISABLE_BLOCKPROTECT_BP2_SRWD,
+	.feature_bits	= FEATURE_WRSR_WREN | FEATURE_OTP | FEATURE_QPI | FEATURE_WRSR2,
+	.reg_bits	=
+	{
+		.srp	= {STATUS1, 7, RW},
+		.srl	= {STATUS2, 0, RW},
+		.bp	= {{STATUS1, 2, RW}, {STATUS1, 3, RW}, {STATUS1, 4, RW}},
+		.tb	= {STATUS1, 5, RW},
+		.sec	= {STATUS1, 6, RW},
+		.cmp	= {STATUS2, 6, RW},
+		.wps	= {STATUS2, 3, RW},
+	},
+	.decode_range	= DECODE_RANGE_SPI25_BP3_TO_1_16,
+};
+
 /* Trying to set an unsupported WP range fails */
 void invalid_wp_range_dummyflasher_test_success(void **state)
 {
@@ -131,6 +145,49 @@ void invalid_wp_range_dummyflasher_test_success(void **state)
 	teardown(NULL);
 
 	flashrom_wp_cfg_release(wp_cfg);
+}
+
+/* Fudan FM25W128 WP state is decoded according to the datasheet table */
+void fudan_fm25w128_wp_decode_test_success(void **state)
+{
+	(void) state; /* unused */
+
+	const struct {
+		const char *status;
+		size_t start;
+		size_t len;
+	} cases[] = {
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x0000", 0x000000, 0x000000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x0004", 0x000000, 0x000000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x0008", 0x000000, 0x000000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x000c", 0xf00000, 0x100000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x0010", 0xe00000, 0x200000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x002c", 0x000000, 0x100000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x001c", 0x000000, 0x1000000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x4000", 0x000000, 0x1000000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x400c", 0x000000, 0xf00000 },
+		{ "bus=spi,emulate=W25Q128FV,spi_status=0x401c", 0x000000, 0x000000 },
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(cases); i++) {
+		struct flashrom_flashctx flash = { 0 };
+		struct flashchip mock_chip = chip_FM25W128;
+		struct flashrom_wp_cfg *wp_cfg;
+		size_t start;
+		size_t len;
+
+		setup_chip(&flash, NULL, &mock_chip, cases[i].status);
+
+		assert_int_equal(0, flashrom_wp_cfg_new(&wp_cfg));
+		assert_int_equal(0, flashrom_wp_read_cfg(wp_cfg, &flash));
+
+		flashrom_wp_get_range(&start, &len, wp_cfg);
+		assert_int_equal(cases[i].start, start);
+		assert_int_equal(cases[i].len, len);
+
+		teardown(NULL);
+		flashrom_wp_cfg_release(wp_cfg);
+	}
 }
 
 /* Enabling hardware WP with a valid range succeeds */
@@ -293,7 +350,7 @@ void full_chip_erase_with_wp_dummyflasher_test_success(void **state)
 	/* Try erasing the chip again. Now that WP is active, the first 4 KiB is
 	   protected and we're trying to erase the whole chip, erase should
 	   fail. */
-	assert_int_equal(1, flashrom_flash_erase(&flash));
+	assert_int_equal(ERROR_FLASHROM_PREPARE_FLASH_ACCESS, flashrom_flash_erase(&flash));
 
 	teardown(&layout);
 

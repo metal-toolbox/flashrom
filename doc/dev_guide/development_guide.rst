@@ -15,6 +15,8 @@ design.
 
 You can `look at the latest flashrom development efforts in Gerrit <https://review.coreboot.org/q/project:flashrom>`_.
 
+.. _git repo setup:
+
 Set up the git repository and dev environment
 =============================================
 
@@ -130,7 +132,7 @@ Coding style
 ------------
 
 Flashrom generally follows Linux kernel style:
-https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/tree/Documentation/process/coding-style.rst
+https://docs.kernel.org/process/coding-style.html
 
 The notable exception is line length limit. Our guidelines are:
 
@@ -142,15 +144,18 @@ The notable exception is line length limit. Our guidelines are:
 * Tables are the only exception to the hard limit and may be as long as needed
   for practical purposes.
 
-Our guidelines borrow heavily from `coreboot coding style
-<https://doc.coreboot.org/contributing/coding_style.html>`_ and `coreboot Gerrit
-guidelines <https://doc.coreboot.org/contributing/gerrit_guidelines.html>`_,
-and most of them apply to flashrom as well. The really important part is about
-the :ref:`sign-off procedure <sign-off>`.
+Other guidelines:
 
-We try to **reuse as much code as possible** and create new files only if
-absolutely needed, so if you find a function somewhere in the tree which
-already does what you want, please use it.
+* We try to **reuse as much code as possible** and create new files only if
+  absolutely needed, so if you find a function somewhere in the tree which
+  already does what you want, please use it.
+
+* Order of includes:
+
+   1. If applicable, header file with the same name as the current source, in double quotes
+   2. Other flashrom headers in double quotes
+   3. Third-party headers in angle brackets
+   4. Standard C and system headers in angle brackets
 
 Testing a patch
 ---------------
@@ -191,6 +196,8 @@ Creating an account
 Pushing a patch
 ---------------
 
+Before pushing a patch, make sure it builds on your environment and all unit tests pass (see :doc:`building_from_source`).
+
 To push patch to Gerrit, use the follow command: :code:`git push upstream HEAD:refs/for/main`.
 
 * If using HTTPS you will be prompted for the username and password you
@@ -208,6 +215,21 @@ have been authored by multiple people.
 To add a topic, push with the command: :code:`git push upstream HEAD:refs/for/main%topic=example_topic`.
 Alternatively, you can add a topic from a Gerrit UI after the patch in pushed
 (on the top-left section) of patch UI.
+
+Checking the CI
+---------------
+
+Every patch needs to get a ``Verified +1`` label, typically from Jenkins. Once the patch is pushed
+to Gerrit, Jenkins is added automatically and runs its build script. The script builds the patch with
+various config options, and runs unit tests (for more details see source code of ``test_build.sh``).
+Then, Jenkins gives the patch ``+1`` or ``-1`` vote, indicating success or fail.
+
+In case of failure, follow Jenkins link (which it adds as a comment to the patch), open Console output,
+find the error and try to fix it.
+
+In addition to building and running unit tests, Jenkins also runs a scan-build over the patch. Ideally
+you should check that your patch does not introduce new warnings. To see scan-build report, follow
+Jenkins link -> Build artifacts -> scan build link for the given run.
 
 Adding reviewers to the patch
 -----------------------------
@@ -322,6 +344,8 @@ To help search for patches which are potential candidates for merging, you can t
    status:open project:flashrom -is:wip -label:Verified-1 label:Verified+1 -label:Code-Review<0 age:3d is:mergeable is:submittable -has:unresolved
 
 Note the search is not a replacement for Merge checklist, but it can help find candidates for merging.
+
+.. _bugtracker:
 
 Bugtracker
 ==========

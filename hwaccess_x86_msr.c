@@ -1,19 +1,11 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2009 Peter Stuge <peter@stuge.se>
- * Copyright (C) 2009 coresystems GmbH
- * Copyright (C) 2010 Carl-Daniel Hailfinger
- * Copyright (C) 2010 Rudolf Marek <r.marek@assembler.cz>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2009 Peter Stuge <peter@stuge.se>
+ * SPDX-FileCopyrightText: 2009 coresystems GmbH
+ * SPDX-FileCopyrightText: 2010 Carl-Daniel Hailfinger
+ * SPDX-FileCopyrightText: 2010 Rudolf Marek <r.marek@assembler.cz>
  */
 
 /* MSR abstraction implementations for Linux, OpenBSD, FreeBSD/Dragonfly, OSX, libpayload
@@ -22,6 +14,7 @@
 
 #include "hwaccess_x86_msr.h"
 #include "flash.h"
+#include "log.h"
 
 #ifdef __linux__
 /*
@@ -36,7 +29,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <string.h>
+#include "platform/string.h"
 #include <unistd.h>
 
 static int fd_msr = -1;
@@ -130,7 +123,7 @@ void msr_cleanup(void)
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
+#include "platform/string.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -213,7 +206,7 @@ void msr_cleanup(void)
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <string.h>
+#include "platform/string.h"
 #include <unistd.h>
 
 #include <sys/ioctl.h>

@@ -1,23 +1,16 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright (C) 2000 Silicon Integrated System Corporation
- * Copyright (C) 2005 coresystems GmbH <stepan@openbios.org>
- * Copyright (C) 2009 Sean Nelson <audiohacked@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ * SPDX-FileCopyrightText: 2000 Silicon Integrated System Corporation
+ * SPDX-FileCopyrightText: 2005 coresystems GmbH <stepan@openbios.org>
+ * SPDX-FileCopyrightText: 2009 Sean Nelson <audiohacked@gmail.com>
  */
 
 #include "flash.h"
+#include "parallel.h"
 #include "chipdrivers.h"
+#include "log.h"
 
 #define AUTO_PG_ERASE1		0x20
 #define AUTO_PG_ERASE2		0xD0
@@ -92,7 +85,7 @@ int write_28sf040(struct flashctx *flash, const uint8_t *src, unsigned int start
 
 		/* wait for Toggle bit ready */
 		toggle_ready_jedec(flash, bios);
-		update_progress(flash, FLASHROM_PROGRESS_WRITE, i + 1, len);
+		update_progress(flash, FLASHROM_PROGRESS_WRITE, 1);
 	}
 
 	return 0;

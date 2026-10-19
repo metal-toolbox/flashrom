@@ -1,19 +1,14 @@
 /*
  * This file is part of the flashrom project.
  *
- * Copyright 2021 Google LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier: GPL-2.0-only
+ * SPDX-FileCopyrightText: 2021 Google LLC
  */
 
+#include <stdlib.h>
+
 #include "lifecycle.h"
+#include "helpers.h"
 
 #if CONFIG_LINUX_MTD == 1
 struct linux_mtd_io_state {
@@ -36,12 +31,12 @@ static size_t linux_mtd_fread(void *state, void *buf, size_t size, size_t len, F
 		const char *data;
 	};
 	const struct linux_mtd_fread_mock_entry fread_mock_map[] = {
-		{ "/sys/class/mtd/mtd0//type",            "nor"    },
-		{ "/sys/class/mtd/mtd0//name",            "Device" },
-		{ "/sys/class/mtd/mtd0//flags",           ""       },
-		{ "/sys/class/mtd/mtd0//size",            "1024"   },
-		{ "/sys/class/mtd/mtd0//erasesize",       "512"    },
-		{ "/sys/class/mtd/mtd0//numeraseregions", "0"      },
+		{ "/sys/class/mtd/mtd0/type",            "nor"    },
+		{ "/sys/class/mtd/mtd0/name",            "Device" },
+		{ "/sys/class/mtd/mtd0/flags",           ""       },
+		{ "/sys/class/mtd/mtd0/size",            "1024"   },
+		{ "/sys/class/mtd/mtd0/erasesize",       "512"    },
+		{ "/sys/class/mtd/mtd0/numeraseregions", "0"      },
 	};
 
 	struct linux_mtd_io_state *io_state = state;
@@ -87,7 +82,9 @@ void linux_mtd_probe_lifecycle_test_success(void **state)
 		.fallback_open_state = &linux_mtd_fallback_open_state,
 	};
 
-	run_probe_lifecycle(state, &linux_mtd_io, &programmer_linux_mtd, "", "Opaque flash chip");
+	const char *expected_matched_names[1] = {"Opaque flash chip"};
+	run_probe_v2_lifecycle(state, &linux_mtd_io, &programmer_linux_mtd, "", "Opaque flash chip",
+				expected_matched_names, 1);
 }
 #else
 	SKIP_TEST(linux_mtd_probe_lifecycle_test_success)
